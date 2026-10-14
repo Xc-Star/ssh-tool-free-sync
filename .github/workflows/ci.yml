@@ -1,0 +1,111 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Linux build prerequisites
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y build-essential python3 libudev-dev
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+  e2e:
+    name: e2e (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Linux prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update && sudo apt-get install -y build-essential python3 libudev-dev xvfb
+          # Ubuntu 24.04 blocks the unprivileged user namespaces that Chromium's sandbox needs.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - run: npm ci
+      - run: npm run build
+      - name: Playwright (Electron, virtual display)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a npx playwright test
+      - name: Playwright (Electron)
+        if: runner.os != 'Linux'
+        run: npx playwright test
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-results-${{ matrix.os }}
+          path: test-results/
+          if-no-files-found: ignore
+
+  sync-databases:
+    name: sync adapters (PostgreSQL / MySQL / MariaDB)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: sshtool
+          POSTGRES_PASSWORD: sshtool
+          POSTGRES_DB: sshtool
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U sshtool" --health-interval 5s --health-timeout 5s --health-retries 20
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: sshtool
+          MYSQL_DATABASE: sshtool
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd "mysqladmin ping -psshtool" --health-interval 5s --health-timeout 5s --health-retries 30
+      mariadb:
+        image: mariadb:11
+        env:
+          MARIADB_ROOT_PASSWORD: sshtool
+          MARIADB_DATABASE: sshtool
+        ports: ['3307:3306']
+        options: >-
+          --health-cmd "healthcheck.sh --connect --innodb_initialized" --health-interval 5s --health-timeout 5s --health-retries 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: sudo apt-get update && sudo apt-get install -y build-essential python3 libudev-dev
+      - run: npm ci
+      - name: Adapter conformance (PostgreSQL 17 + MySQL 8.4)
+        run: npx vitest run tests/integration/adapters.test.ts
+        env:
+          SSHTOOL_TEST_PG_URL: postgres://sshtool:sshtool@127.0.0.1:5432/sshtool
+          SSHTOOL_TEST_MYSQL_URL: mysql://root:sshtool@127.0.0.1:3306/sshtool
+      - name: Adapter conformance (MariaDB 11)
+        run: npx vitest run tests/integration/adapters.test.ts
+        env:
+          SSHTOOL_TEST_MYSQL_URL: mysql://root:sshtool@127.0.0.1:3307/sshtool

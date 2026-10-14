@@ -1,0 +1,38 @@
+export default {
+  searchPlaceholder: 'Search hosts, key types or fingerprints',
+  importDefault: 'Import ~/.ssh/known_hosts',
+  importMore: 'More import options',
+  importFile: 'Import from file…',
+  importDialogTitle: 'Choose a known_hosts file',
+  imported_one: 'Imported {{count}} host key',
+  imported_other: 'Imported {{count}} host keys',
+  importNothing: 'No new host keys found',
+  importSkipped: '{{count}} entries skipped (already known, hashed, wildcard or marker lines)',
+  importFailed: 'Import failed',
+  host: 'Host',
+  port: 'Port',
+  keyType: 'Key type',
+  fingerprint: 'Fingerprint',
+  updated: 'Updated',
+  copyFingerprint: 'Copy fingerprint',
+  fingerprintCopied: 'Fingerprint copied',
+  copyPublicKey: 'Copy public key',
+  publicKeyCopied: 'Public key copied',
+  deleteTitle: 'Remove known host?',
+  deleteMessage:
+    'Remove the {{keyType}} key of {{host}}? The next connection to this server will ask you to verify its key again.',
+  deleteManyMessage:
+    'Remove {{count}} known host keys? The next connection to these servers will ask you to verify their keys again.',
+  deleteSelected: 'Delete ({{count}})',
+  removed_one: 'Removed {{count}} known host',
+  removed_other: 'Removed {{count}} known hosts',
+  selected: '{{count}} selected',
+  clearSelection: 'Clear selection',
+  usedBy: 'Used by {{name}}',
+  count_one: '{{count}} key',
+  count_other: '{{count}} keys',
+  emptyTitle: 'No known hosts yet',
+  emptyDescription:
+    'When you connect to a server for the first time and choose to trust its host key, the fingerprint is recorded here and synced to your other devices. SSH Tool warns you if that key ever changes.',
+  noMatch: 'No known hosts match your search'
+}

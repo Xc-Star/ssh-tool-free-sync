@@ -1,0 +1,96 @@
+export default {
+  searchPlaceholder: '搜索规则、主机或端口',
+  newRule: '新建规则',
+  rules: '规则',
+  runningCount: '{{count}} 个运行中',
+  types: {
+    local: '本地',
+    remote: '远程',
+    dynamic: '动态 SOCKS'
+  },
+  typeHint: {
+    local: '在本机打开一个端口，连接经由 SSH 主机转发到它能访问的目标地址。',
+    remote: '在 SSH 主机上打开一个端口，连接经隧道回到本机，再转发到本机能访问的目标地址。',
+    dynamic: '在本机运行一个 SOCKS5 代理，使用它的应用可通过 SSH 主机访问任意目标。'
+  },
+  status: {
+    stopped: '已停止',
+    starting: '启动中…',
+    running: '运行中',
+    error: '出错'
+  },
+  connections_other: '{{count}} 个连接',
+  autoStart: '自动启动',
+  autoStartTip: 'SSH Tool 启动时自动开启',
+  thisComputer: '本机',
+  missingHost: '主机已删除',
+  missingHostTip: '此规则使用的主机已被删除，请编辑规则并选择其他主机。',
+  via: '经由',
+  fallback: {
+    local: '本地 {{bind}} → {{dest}}',
+    remote: '远程 {{bind}} → {{dest}}',
+    dynamic: 'SOCKS5 代理 {{bind}}'
+  },
+  start: '启动',
+  stop: '停止',
+  startFailed: '无法启动“{{name}}”',
+  stopFailed: '无法停止“{{name}}”',
+  duplicated: '已复制规则',
+  copyAddress: '复制监听地址',
+  addressCopied: '地址已复制',
+  deleteMessage: '确定要删除规则“{{name}}”吗？如果它正在运行，会先停止隧道。此操作不可撤销。',
+  emptyTitle: '还没有端口转发规则',
+  emptyDescription: '通过 SSH 主机为 TCP 流量建立隧道。根据用途选择转发类型：',
+  emptyLocal: '在本机访问 SSH 主机后面的服务，例如数据库或管理后台。',
+  emptyRemote: '把本机上运行的服务暴露给 SSH 主机或它所在的网络。',
+  emptyDynamic: '把 SSH 主机当作 SOCKS5 代理，供浏览器或其他应用使用。',
+  noMatch: '没有匹配的规则',
+
+  // editor
+  newTitle: '新建端口转发规则',
+  editTitle: '编辑端口转发规则',
+  sectionType: '转发类型',
+  sectionGeneral: '基本信息',
+  sectionListenLocal: '在本机监听',
+  sectionListenRemote: '在 SSH 主机上监听',
+  sectionListenSocks: '本机 SOCKS 代理',
+  sectionDestination: '目标地址',
+  sectionOptions: '选项',
+  host: 'SSH 主机',
+  hostPlaceholder: '选择主机',
+  hostSearch: '搜索主机…',
+  noHosts: '还没有主机，请先添加主机。',
+  noHostsMatch: '没有匹配的主机',
+  label: '名称',
+  labelPlaceholder: '例如：生产数据库',
+  labelHint: '可选，留空时显示规则的描述。',
+  bindAddress: '绑定地址',
+  bindPort: '端口',
+  bindHintLocal: '127.0.0.1 表示端口仅本机可用；0.0.0.0 会把端口暴露给你所在的网络。',
+  bindHintRemote:
+    '127.0.0.1 表示端口仅 SSH 主机自身可用；0.0.0.0 会暴露给其所在网络（需要服务器开启 GatewayPorts）。',
+  bindExposed: '网络中的其他机器将可以连接到此端口。',
+  destHost: '目标主机',
+  destPort: '端口',
+  destHintLocal: '从 SSH 主机看到的地址，例如 127.0.0.1 表示 SSH 主机本身上的服务。',
+  destHintRemote: '从本机看到的地址，例如 127.0.0.1 表示本机上运行的服务。',
+  autoStartLabel: '自动启动',
+  autoStartHint: '每次启动 SSH Tool 时自动开启此规则。',
+  diagram: {
+    thisComputer: '本机',
+    sshHost: 'SSH 主机',
+    destination: '目标',
+    anyDestination: '任意目标',
+    tunnel: 'SSH 隧道',
+    listens: '监听',
+    selectHost: '未选择'
+  },
+  errors: {
+    host: '请选择 SSH 主机',
+    port: '请输入 1 到 65535 之间的端口',
+    destHost: '请输入目标主机'
+  },
+  restartHint: '运行中，保存后会重新启动隧道',
+  restarted: '已保存并重新启动',
+  restartFailed: '已保存，但规则未能重新启动'
+}

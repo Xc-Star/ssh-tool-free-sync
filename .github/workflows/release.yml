@@ -1,0 +1,73 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: build (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-x64
+            os: windows-latest
+            args: --win --x64
+          - name: macos
+            os: macos-latest
+            args: --mac --x64 --arm64
+          - name: linux-x64
+            os: ubuntu-latest
+            args: --linux --x64
+          - name: linux-arm64
+            os: ubuntu-24.04-arm
+            args: --linux --arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Linux build prerequisites
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y build-essential python3 libudev-dev rpm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - name: Package
+        run: npx electron-builder ${{ matrix.args }} --publish never
+        env:
+          # Unsigned by default. Add CSC_LINK / CSC_KEY_PASSWORD secrets (and Apple notarization variables) to sign.
+          CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.CSC_LINK != '' }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          if-no-files-found: error
+          path: |
+            release/*/*.exe
+            release/*/*.dmg
+            release/*/*.zip
+            release/*/*.AppImage
+            release/*/*.deb
+            release/*/*.rpm
+
+  publish:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/**/*
+          generate_release_notes: true

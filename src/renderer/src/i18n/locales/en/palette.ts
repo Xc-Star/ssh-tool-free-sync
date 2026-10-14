@@ -1,0 +1,22 @@
+export default {
+  placeholder: 'Search hosts, snippets, actions — or type user@host to connect',
+  empty: 'No matches',
+  quickConnect: 'Quick connect',
+  connectTo: 'Connect to {{target}}',
+  hosts: 'Hosts',
+  snippets: 'Snippets',
+  runInTerminal: 'Run in current terminal',
+  runOnHosts: 'Run on hosts…',
+  actions: 'Actions',
+  newHost: 'New host',
+  newGroup: 'New group',
+  localTerminal: 'Open local terminal',
+  serial: 'Serial connection',
+  openSftp: 'Open SFTP',
+  manageSnippets: 'Manage snippets',
+  syncNow: 'Sync now',
+  toggleTheme: 'Toggle dark / light theme',
+  settings: 'Open settings',
+  lock: 'Lock app',
+  hint: 'Tip: type root@192.168.1.10 or ssh -p 2222 user@host to connect quickly'
+}

@@ -1,0 +1,29 @@
+# Self-hosted PostgreSQL for SSH Tool sync.
+#
+#   docker compose -f deploy/docker-compose.postgres.yml up -d
+#
+# Then in SSH Tool → Settings → Sync choose PostgreSQL and use:
+#   postgres://sshtool:<password>@<your-server>:5432/sshtool   (SSL mode: require, see README for TLS)
+#
+# Change the password below! The database only ever stores ciphertext encrypted with your master
+# password, but you should still not expose a database with a weak password to the internet.
+services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sshtool
+      POSTGRES_PASSWORD: change-me-to-a-long-random-password
+      POSTGRES_DB: sshtool
+    ports:
+      - '5432:5432'
+    volumes:
+      - sshtool-pg:/var/lib/postgresql/data
+    # Enable TLS with your own certificate (recommended when reachable from the internet):
+    # command: >
+    #   -c ssl=on -c ssl_cert_file=/certs/server.crt -c ssl_key_file=/certs/server.key
+    # volumes:
+    #   - ./certs:/certs:ro
+
+volumes:
+  sshtool-pg:

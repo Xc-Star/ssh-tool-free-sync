@@ -1,0 +1,85 @@
+appId: com.sshtool.app
+productName: SSH Tool
+copyright: Copyright © 2026 SSH Tool contributors
+directories:
+  output: release/${version}
+  buildResources: build
+files:
+  - out/**
+  - resources/**
+  - package.json
+  - "!**/*.map"
+  - "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,HISTORY.md,*.d.ts}"
+  - "!**/node_modules/*/{test,tests,__tests__,example,examples,docs,.github}/**"
+  - "!**/node_modules/.bin"
+  - "!**/node_modules/node-pty/{deps,src,third_party,scripts,typings}/**"
+  - "!**/node_modules/node-pty/**/*.pdb"
+  - "!**/node_modules/node-pty/lib/*.test.js"
+  - "!**/node_modules/@serialport/bindings-cpp/{src,prebuilds/android-*}/**"
+  # Native prebuilds for other platforms. ${platform} is the build host, which is always the target platform
+  # (native modules cannot be cross-built). Keep this in the top-level list: a platform-level `files` list that
+  # only contains exclusions makes electron-builder fall back to packaging the whole project folder.
+  - "!**/node_modules/node-pty/prebuilds/!(${platform}-*)/**"
+  - "!**/node_modules/@serialport/bindings-cpp/prebuilds/!(${platform}-*)/**"
+asar: true
+asarUnpack:
+  - "**/node_modules/node-pty/**"
+  - "**/node_modules/@serialport/bindings-cpp/**"
+# node-pty and serialport are N-API modules with prebuilt binaries: no Electron rebuild needed.
+npmRebuild: false
+electronLanguages:
+  - en-US
+  - zh-CN
+  - zh-TW
+
+win:
+  icon: build/icon.png
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: SSH Tool
+  artifactName: ${name}-${version}-win-${arch}-setup.${ext}
+portable:
+  artifactName: ${name}-${version}-win-${arch}-portable.${ext}
+
+mac:
+  icon: build/icon.png
+  category: public.app-category.developer-tools
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+    - target: zip
+      arch: [x64, arm64]
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  artifactName: ${name}-${version}-mac-${arch}.${ext}
+  extendInfo:
+    NSLocalNetworkUsageDescription: SSH Tool connects to servers on your local network.
+dmg:
+  artifactName: ${name}-${version}-mac-${arch}.${ext}
+
+linux:
+  icon: build/icons
+  category: Development
+  synopsis: SSH client with SFTP, port forwarding and self-hosted multi-device sync
+  description: Cross-platform SSH client with SFTP, port forwarding, snippets and end-to-end encrypted sync through your own PostgreSQL, MySQL or Cloudflare D1 database.
+  maintainer: SSH Tool contributors <sshtool@users.noreply.github.com>
+  target:
+    - AppImage
+    - deb
+    - rpm
+  artifactName: ${name}-${version}-linux-${arch}.${ext}
+deb:
+  depends: [libnotify4, libxtst6, libnss3, libsecret-1-0]
+
+publish: null

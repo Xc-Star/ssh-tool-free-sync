@@ -1,0 +1,22 @@
+export default {
+  placeholder: '搜索主机、代码片段、操作，或输入 user@host 直接连接',
+  empty: '没有找到匹配项',
+  quickConnect: '快速连接',
+  connectTo: '连接到 {{target}}',
+  hosts: '主机',
+  snippets: '代码片段',
+  runInTerminal: '在当前终端运行',
+  runOnHosts: '选择主机运行…',
+  actions: '操作',
+  newHost: '新建主机',
+  newGroup: '新建分组',
+  localTerminal: '打开本地终端',
+  serial: '串口连接',
+  openSftp: '打开 SFTP',
+  manageSnippets: '管理代码片段',
+  syncNow: '立即同步',
+  toggleTheme: '切换深色/浅色主题',
+  settings: '打开设置',
+  lock: '锁定应用',
+  hint: '提示：输入 root@192.168.1.10 或 ssh -p 2222 user@host 即可快速连接'
+}

@@ -1,0 +1,186 @@
+@import 'tailwindcss';
+@import '@xterm/xterm/css/xterm.css';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --c-app: #f5f6fa;
+  --c-sidebar: #eceef4;
+  --c-titlebar: #e8eaf0;
+  --c-panel: #ffffff;
+  --c-panel-hover: #f0f2f7;
+  --c-elevated: #ffffff;
+  --c-input: #ffffff;
+  --c-line: #e0e3eb;
+  --c-line-strong: #cbd0dc;
+  --c-fg: #1c1f2e;
+  --c-muted: #5f6579;
+  --c-subtle: #969cb0;
+  --c-accent: #3d68f5;
+  --c-accent-hover: #2f58e0;
+  --c-accent-soft: rgba(61, 104, 245, 0.12);
+  --c-success: #1f9d5c;
+  --c-warning: #d98a1c;
+  --c-danger: #df4545;
+  --c-overlay: rgba(20, 22, 33, 0.35);
+  --shadow-pop: 0 12px 32px rgba(23, 26, 40, 0.16), 0 2px 6px rgba(23, 26, 40, 0.08);
+}
+
+.dark {
+  --c-app: #131520;
+  --c-sidebar: #0f111a;
+  --c-titlebar: #0d0f17;
+  --c-panel: #1b1e2c;
+  --c-panel-hover: #232739;
+  --c-elevated: #1c1f2e;
+  --c-input: #10121b;
+  --c-line: #262a3b;
+  --c-line-strong: #353a50;
+  --c-fg: #e6e8f0;
+  --c-muted: #8d92a6;
+  --c-subtle: #5e6378;
+  --c-accent: #5b7fff;
+  --c-accent-hover: #7391ff;
+  --c-accent-soft: rgba(91, 127, 255, 0.16);
+  --c-success: #33c47b;
+  --c-warning: #f0a53a;
+  --c-danger: #f05b5b;
+  --c-overlay: rgba(4, 5, 10, 0.6);
+  --shadow-pop: 0 16px 40px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+@theme inline {
+  --color-app: var(--c-app);
+  --color-sidebar: var(--c-sidebar);
+  --color-titlebar: var(--c-titlebar);
+  --color-panel: var(--c-panel);
+  --color-panel-hover: var(--c-panel-hover);
+  --color-elevated: var(--c-elevated);
+  --color-input: var(--c-input);
+  --color-line: var(--c-line);
+  --color-line-strong: var(--c-line-strong);
+  --color-fg: var(--c-fg);
+  --color-muted: var(--c-muted);
+  --color-subtle: var(--c-subtle);
+  --color-accent: var(--c-accent);
+  --color-accent-hover: var(--c-accent-hover);
+  --color-accent-soft: var(--c-accent-soft);
+  --color-success: var(--c-success);
+  --color-warning: var(--c-warning);
+  --color-danger: var(--c-danger);
+  --color-overlay: var(--c-overlay);
+  --shadow-pop: var(--shadow-pop);
+  --font-sans:
+    'Inter', 'Segoe UI', system-ui, -apple-system, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans CJK SC',
+    sans-serif;
+  --font-mono: 'JetBrains Mono', 'Cascadia Mono', 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-app text-fg font-sans antialiased;
+    font-size: 13px;
+    overflow: hidden;
+    user-select: none;
+    -webkit-font-smoothing: antialiased;
+  }
+  input,
+  textarea,
+  [contenteditable='true'],
+  .selectable {
+    user-select: text;
+  }
+  button {
+    cursor: default;
+  }
+  ::selection {
+    background: var(--c-accent-soft);
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--c-line-strong) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: var(--c-line-strong);
+    border-radius: 8px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  :focus-visible {
+    outline: 2px solid var(--c-accent);
+    outline-offset: 1px;
+  }
+}
+
+.drag-region {
+  -webkit-app-region: drag;
+}
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* xterm container */
+.terminal-host {
+  position: absolute;
+  inset: 0;
+  padding: 6px 4px 4px 10px;
+}
+.terminal-host .xterm {
+  height: 100%;
+}
+.terminal-host .xterm-viewport {
+  scrollbar-width: thin;
+}
+
+@keyframes sshtool-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.animate-soft-pulse {
+  animation: sshtool-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes sshtool-slide-in {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+.animate-slide-in {
+  animation: sshtool-slide-in 160ms ease-out;
+}
+
+@keyframes sshtool-fade-in {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.animate-fade-in {
+  animation: sshtool-fade-in 120ms ease-out;
+}

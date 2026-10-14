@@ -1,0 +1,5 @@
+out
+release
+node_modules
+coverage
+*.md
