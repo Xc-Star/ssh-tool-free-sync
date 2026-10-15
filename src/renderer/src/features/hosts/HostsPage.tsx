@@ -51,13 +51,14 @@ import {
   DropdownMenuTrigger,
   Tip
 } from '@/components/ui/controls'
-import { EmptyState, SectionTitle } from '@/components/ui/misc'
+import { EmptyState, Kbd, SectionTitle } from '@/components/ui/misc'
 import { call, on, vaultApi } from '@/lib/api'
+import { formatCombo, resolveShortcuts } from '@/lib/shortcuts'
 import { cn, colorFor, copyText, relativeTime } from '@/lib/utils'
 import { useApp } from '@/stores/app'
 import { openHost, openTab } from '@/stores/tabs'
 import { openEditor, openInSftp, useUi } from '@/stores/ui'
-import { useItems } from '@/stores/vault'
+import { useItems, useShortcutOverrides } from '@/stores/vault'
 import {
   descendantGroupIds,
   type GroupItem,
@@ -95,6 +96,31 @@ function connect(h: HostItem): void {
 
 async function moveHosts(ids: string[], groupId: string | undefined): Promise<void> {
   for (const id of ids) await vaultApi.patch(id, { groupId })
+}
+
+/**
+ * Quick access to a shell on this machine. The tooltip shows the effective (possibly customised)
+ * shortcut so the button doubles as a hint for the `localTerminal` hotkey.
+ */
+function OpenLocalTerminalButton(): React.JSX.Element {
+  const { t } = useTranslation('hosts')
+  const overrides = useShortcutOverrides()
+  const combo = useMemo(() => resolveShortcuts(overrides).localTerminal, [overrides])
+  return (
+    <Tip
+      content={
+        <span className="flex items-center gap-1.5">
+          {t('openLocalTerminal')}
+          <Kbd>{formatCombo(combo)}</Kbd>
+        </span>
+      }
+    >
+      <Button variant="secondary" onClick={() => void openTab({ kind: 'local' })} data-testid="open-local-terminal">
+        <Terminal />
+        {t('openLocalTerminal')}
+      </Button>
+    </Tip>
+  )
 }
 
 export function HostsPage(): React.JSX.Element {
@@ -298,6 +324,7 @@ export function HostsPage(): React.JSX.Element {
                 </DropdownMenuRadioGroup>
               </DropdownMenuContent>
             </DropdownMenu>
+            <OpenLocalTerminalButton />
             <div className="flex">
               <Button variant="primary" className="rounded-r-none" onClick={() => openEditor('host', undefined, newHostDefaults)} data-testid="new-host">
                 <Plus />
@@ -328,10 +355,6 @@ export function HostsPage(): React.JSX.Element {
                     {t('importCsv')}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onSelect={() => void openTab({ kind: 'local' })}>
-                    <Terminal />
-                    {t('localTerminal')}
-                  </DropdownMenuItem>
                   <DropdownMenuItem onSelect={() => useUi.setState({ serialDialogOpen: true })}>
                     <Usb />
                     {t('serial')}

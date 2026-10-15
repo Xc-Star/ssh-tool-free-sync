@@ -4,7 +4,7 @@ export default {
   newGroup: '新建分组',
   importSshConfig: '从 SSH 配置导入',
   importCsv: '导入 CSV',
-  localTerminal: '本地终端',
+  openLocalTerminal: '打开本地终端',
   serial: '串口连接',
   connectTo: '连接 {{target}}',
   groups: '分组',

@@ -4,7 +4,7 @@ export default {
   newGroup: 'New group',
   importSshConfig: 'Import SSH config',
   importCsv: 'Import CSV',
-  localTerminal: 'Local terminal',
+  openLocalTerminal: 'Open local terminal',
   serial: 'Serial connection',
   connectTo: 'Connect to {{target}}',
   groups: 'Groups',
