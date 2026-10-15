@@ -1,6 +1,7 @@
 {
   "name": "ssh-tool",
   "productName": "SSH Tool",
+  "desktopName": "ssh-tool.desktop",
   "version": "0.1.0",
   "description": "Cross-platform SSH client with SFTP, port forwarding and self-hosted multi-device sync (PostgreSQL / MySQL / Cloudflare D1).",
   "main": "./out/main/index.js",
@@ -19,6 +20,7 @@
     "test:watch": "vitest",
     "test:e2e": "npm run build && playwright test",
     "screenshots": "npm run build && playwright test -c playwright.screenshots.config.ts",
+    "test:package": "playwright test -c playwright.package.config.ts",
     "icons": "node scripts/gen-icons.mjs",
     "dist": "npm run build && electron-builder",
     "dist:win": "npm run build && electron-builder --win",

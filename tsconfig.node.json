@@ -23,6 +23,7 @@
     "vitest.config.mts",
     "playwright.config.ts",
     "playwright.screenshots.config.ts",
+    "playwright.package.config.ts",
     "src/main/**/*",
     "src/preload/**/*",
     "src/shared/**/*",

@@ -134,9 +134,10 @@ D1 是 Cloudflare 的 Serverless SQLite，免费额度对个人同步绰绰有�
 在 [Releases](../../releases) 下载对应平台的安装包：
 
 - **Windows**：`ssh-tool-<版本>-win-x64-setup.exe`（安装版）或 `-portable.exe`（便携版）。未签名的安装包可能触发 SmartScreen 提示，点击「更多信息 → 仍要运行」。
-- **macOS**：`ssh-tool-<版本>-mac-arm64.dmg`（Apple 芯片）/ `-mac-x64.dmg`（Intel）。未签名应用首次打开被拦截时，
+- **macOS**：`ssh-tool-<版本>-mac-arm64.dmg`（Apple 芯片）/ `-mac-x64.dmg`（Intel）。安装包未经 Apple 公证，首次打开被拦截时，
   请到「系统设置 → 隐私与安全性」点击「仍要打开」，或执行 `xattr -dr com.apple.quarantine "/Applications/SSH Tool.app"`。
-- **Linux**：`AppImage`（`chmod +x` 后直接运行）、`deb`、`rpm`，提供 x64 与 arm64。
+- **Linux**：`AppImage`、`deb`、`rpm`，提供 x64 与 arm64。Ubuntu / Debian 推荐使用 deb：会自动配置 Chromium 沙箱与 AppArmor，并加入应用菜单。
+  AppImage 需要 FUSE 2，Ubuntu 22.04 及以上请先安装（24.04：`sudo apt install libfuse2t64`；22.04：`sudo apt install libfuse2`），然后 `chmod +x` 后直接运行。
 
 数据目录：Windows `%APPDATA%\SSH Tool`，macOS `~/Library/Application Support/SSH Tool`，Linux `~/.config/SSH Tool`。
 
@@ -152,6 +153,7 @@ npm run dev          # 开发模式（热更新）
 npm test             # 单元测试 + 集成测试（内置 SSH 测试服务器、D1 模拟服务、内嵌 PostgreSQL）
 npm run test:e2e     # 端到端测试（Playwright 驱动真实应用：建主机→SSH 终端、同步向导、两台设备同步、重启后继续同步、对话框、钥匙串故障恢复）
 npm run screenshots  # 重新生成 README 截图（docs/screenshots，中英文各一套）
+npx electron-builder --dir && npm run test:package   # 打包当前平台并做冒烟测试（安装包内容、签名、原生模块）
 npm run typecheck
 npm run dist:win     # 打包 Windows（在 Windows 上执行）
 npm run dist:mac     # 打包 macOS（在 macOS 上执行）

@@ -63,6 +63,47 @@ jobs:
           path: test-results/
           if-no-files-found: ignore
 
+  package:
+    name: package smoke test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Linux prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update && sudo apt-get install -y build-essential python3 libudev-dev xvfb
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - run: npm ci
+      - run: npm run build
+      - name: Package (unpacked app)
+        shell: bash
+        run: |
+          # Same ad-hoc signing as unsigned macOS releases (see release.yml).
+          if [ "$RUNNER_OS" = "macOS" ]; then set -- --config.mac.identity=-; fi
+          npx electron-builder --dir --publish never "$@"
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+      - name: Smoke test (virtual display)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a npm run test:package
+      - name: Smoke test
+        if: runner.os != 'Linux'
+        run: npm run test:package
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: package-results-${{ matrix.os }}
+          path: test-results/
+          if-no-files-found: ignore
+
   sync-databases:
     name: sync adapters (PostgreSQL / MySQL / MariaDB)
     runs-on: ubuntu-latest

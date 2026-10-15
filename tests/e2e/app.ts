@@ -12,12 +12,15 @@ export interface Running {
   close: (opts?: { keepData?: boolean }) => Promise<void>
 }
 
-/** Launches the built app (out/) with an isolated profile (or an existing one, to simulate a restart). */
-export async function launchApp(name: string, opts: { userData?: string } = {}): Promise<Running> {
+/**
+ * Launches the built app (out/) with an isolated profile (or an existing one, to simulate a restart).
+ * `executablePath` starts a packaged app instead (see tests/package).
+ */
+export async function launchApp(name: string, opts: { userData?: string; executablePath?: string } = {}): Promise<Running> {
   const userData = opts.userData ?? fs.mkdtempSync(path.join(os.tmpdir(), `sshtool-e2e-${name}-`))
   const app = await _electron.launch({
     // The project folder (not out/main/index.js) so Electron reads package.json: real app version and name.
-    args: [path.resolve('.')],
+    ...(opts.executablePath ? { executablePath: opts.executablePath, args: [] } : { args: [path.resolve('.')] }),
     env: { ...process.env, SSHTOOL_USER_DATA: userData, ELECTRON_RENDERER_URL: '' },
     timeout: 60_000
   })

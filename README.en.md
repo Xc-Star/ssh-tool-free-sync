@@ -128,9 +128,10 @@ D1 is Cloudflare's serverless SQLite. Its free tier is more than enough for pers
 Download the package for your platform from [Releases](../../releases):
 
 - **Windows**: `ssh-tool-<version>-win-x64-setup.exe` (installer) or `-portable.exe` (portable). Unsigned builds may trigger a SmartScreen prompt — click **More info → Run anyway**.
-- **macOS**: `ssh-tool-<version>-mac-arm64.dmg` (Apple silicon) / `-mac-x64.dmg` (Intel). If macOS blocks the unsigned app on first launch,
+- **macOS**: `ssh-tool-<version>-mac-arm64.dmg` (Apple silicon) / `-mac-x64.dmg` (Intel). The app is not notarized by Apple; if macOS blocks it on first launch,
   open **System Settings → Privacy & Security** and click **Open Anyway**, or run `xattr -dr com.apple.quarantine "/Applications/SSH Tool.app"`.
-- **Linux**: `AppImage` (`chmod +x` and run), `deb`, `rpm`, for x64 and arm64.
+- **Linux**: `AppImage`, `deb`, `rpm`, for x64 and arm64. On Ubuntu / Debian the `.deb` is recommended: it sets up Chromium's sandbox and AppArmor profile and adds a menu entry.
+  The AppImage needs FUSE 2, which Ubuntu 22.04+ doesn't install by default (24.04: `sudo apt install libfuse2t64`; 22.04: `sudo apt install libfuse2`); then `chmod +x` it and run it.
 
 Data directory: Windows `%APPDATA%\SSH Tool`, macOS `~/Library/Application Support/SSH Tool`, Linux `~/.config/SSH Tool`.
 
@@ -146,6 +147,7 @@ npm run dev          # development mode with hot reload
 npm test             # unit + integration tests (built-in SSH test server, D1 mock, embedded PostgreSQL)
 npm run test:e2e     # end-to-end tests (Playwright drives the real app: host → SSH terminal, sync wizard, two-device sync, sync after restart, dialogs, keychain recovery)
 npm run screenshots  # regenerate the README screenshots (docs/screenshots, one set per language)
+npx electron-builder --dir && npm run test:package   # package for this platform and smoke-test it (archive contents, signing, native modules)
 npm run typecheck
 npm run dist:win     # package for Windows (run on Windows)
 npm run dist:mac     # package for macOS (run on macOS)

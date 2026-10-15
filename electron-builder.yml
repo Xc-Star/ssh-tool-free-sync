@@ -31,6 +31,10 @@ electronLanguages:
   - en-US
   - zh-CN
   - zh-TW
+  # macOS names its locale folders zh_CN.lproj / zh_TW.lproj (Windows/Linux use zh-CN.pak); without these the mac
+  # build drops the Chinese locales, and native menus and dialogs fall back to English.
+  - zh_CN
+  - zh_TW
 
 win:
   icon: build/icon.png
@@ -71,6 +75,9 @@ dmg:
 linux:
   icon: build/icons
   category: Development
+  # The .desktop file is named after package.json "desktopName", which Electron also uses as the window's
+  # app_id / WM_CLASS: docks and taskbars can then match the running window to its launcher entry.
+  syncDesktopName: true
   synopsis: SSH client with SFTP, port forwarding and self-hosted multi-device sync
   description: Cross-platform SSH client with SFTP, port forwarding, snippets and end-to-end encrypted sync through your own PostgreSQL, MySQL or Cloudflare D1 database.
   maintainer: SSH Tool contributors <sshtool@users.noreply.github.com>
@@ -79,7 +86,6 @@ linux:
     - deb
     - rpm
   artifactName: ${name}-${version}-linux-${arch}.${ext}
-deb:
-  depends: [libnotify4, libxtst6, libnss3, libsecret-1-0]
+# deb / rpm use electron-builder's default dependency lists (GTK, NSS, libsecret, …); don't override them.
 
 publish: null
