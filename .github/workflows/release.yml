@@ -43,10 +43,15 @@ jobs:
       - name: Package
         shell: bash
         run: |
-          # Without a certificate, sign the macOS app ad hoc. electron-builder otherwise leaves the app with a broken
-          # signature, which Apple Silicon Macs report as "damaged"; an ad-hoc signed app gets the usual
-          # "Open Anyway" flow (System Settings → Privacy & Security) instead.
-          if [ "$RUNNER_OS" = "macOS" ] && [ -z "$CSC_LINK" ]; then set -- --config.mac.identity=-; fi
+          if [ -z "$CSC_LINK" ]; then
+            # No certificate configured. An empty CSC_LINK must not reach electron-builder: on macOS it is
+            # resolved as a certificate path (the project folder) and packaging fails with "... not a file".
+            unset CSC_LINK CSC_KEY_PASSWORD
+            # Sign the macOS app ad hoc instead. electron-builder otherwise leaves the app with a broken
+            # signature, which Apple Silicon Macs report as "damaged"; an ad-hoc signed app gets the usual
+            # "Open Anyway" flow (System Settings → Privacy & Security).
+            if [ "$RUNNER_OS" = "macOS" ]; then set -- --config.mac.identity=-; fi
+          fi
           npx electron-builder ${{ matrix.args }} --publish never "$@"
         env:
           # Unsigned by default. Add CSC_LINK / CSC_KEY_PASSWORD secrets (and Apple notarization variables) to sign.
