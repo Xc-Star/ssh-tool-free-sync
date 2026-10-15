@@ -27,6 +27,8 @@
     "src/main/**/*",
     "src/preload/**/*",
     "src/shared/**/*",
-    "tests/**/*"
+    "tests/**/*",
+    // DOM-free renderer logic that unit tests in tests/ import directly (config building, validation).
+    "src/renderer/src/features/sync/model.ts"
   ]
 }

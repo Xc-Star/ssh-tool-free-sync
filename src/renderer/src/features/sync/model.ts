@@ -1,5 +1,5 @@
 import { SECRET_MASK } from '@shared/schemas'
-import type { D1DbConfig, SqlDbConfig, SslMode, SyncDbConfig, SyncDbKind } from '@shared/types'
+import type { D1DbConfig, SqlDbConfig, SslMode, SyncDbConfig, SyncDbKind, WebdavDbConfig } from '@shared/types'
 
 export const DEFAULT_PREFIX = 'sshtool_'
 export const DEFAULT_PORT: Record<SqlDbConfig['kind'], number> = { postgres: 5432, mysql: 3306 }
@@ -10,7 +10,7 @@ export const URL_SCHEMES: Record<SqlDbConfig['kind'], string[]> = {
   postgres: ['postgres://', 'postgresql://'],
   mysql: ['mysql://', 'mariadb://']
 }
-export const DB_KINDS: SyncDbKind[] = ['postgres', 'mysql', 'd1']
+export const DB_KINDS: SyncDbKind[] = ['postgres', 'mysql', 'd1', 'webdav']
 
 export interface SqlForm {
   useUrl: boolean
@@ -35,12 +35,22 @@ export interface D1Form {
   baseUrl: string
 }
 
+export interface WebdavForm {
+  /** Folder URL, e.g. https://cloud.example.com/remote.php/dav/files/user/sshtool/ */
+  url: string
+  username: string
+  /** Typed password, or SECRET_MASK while the stored one is kept. */
+  password: string
+  tablePrefix: string
+}
+
 export type FormField =
   | 'url'
   | 'host'
   | 'port'
   | 'database'
   | 'user'
+  | 'username'
   | 'tablePrefix'
   | 'accountId'
   | 'databaseId'
@@ -71,6 +81,10 @@ export function emptyD1Form(): D1Form {
   return { accountId: '', databaseId: '', apiToken: '', tablePrefix: DEFAULT_PREFIX, baseUrl: '' }
 }
 
+export function emptyWebdavForm(): WebdavForm {
+  return { url: '', username: '', password: '', tablePrefix: DEFAULT_PREFIX }
+}
+
 export function sqlFormFrom(cfg: SqlDbConfig): SqlForm {
   return {
     useUrl: !!cfg.url?.trim(),
@@ -96,12 +110,26 @@ export function d1FormFrom(cfg: D1DbConfig): D1Form {
   }
 }
 
+export function webdavFormFrom(cfg: WebdavDbConfig): WebdavForm {
+  return {
+    url: cfg.url ?? '',
+    username: cfg.username ?? '',
+    password: cfg.password ?? '',
+    tablePrefix: cfg.tablePrefix || DEFAULT_PREFIX
+  }
+}
+
 export function needsCa(ssl: SslMode): boolean {
   return ssl === 'verify-ca' || ssl === 'verify-full'
 }
 
 /** Builds the config sent to the main process. Masked secrets are passed through unchanged (main restores them). */
-export function buildConfig(kind: SyncDbKind, sql: SqlForm, d1: D1Form): SyncDbConfig {
+export function buildConfig(
+  kind: SyncDbKind,
+  sql: SqlForm,
+  d1: D1Form,
+  webdav: WebdavForm
+): SyncDbConfig {
   if (kind === 'd1') {
     const baseUrl = d1.baseUrl.trim()
     return {
@@ -111,6 +139,15 @@ export function buildConfig(kind: SyncDbKind, sql: SqlForm, d1: D1Form): SyncDbC
       apiToken: d1.apiToken === SECRET_MASK ? d1.apiToken : d1.apiToken.trim(),
       tablePrefix: d1.tablePrefix.trim() || DEFAULT_PREFIX,
       ...(baseUrl ? { baseUrl } : {})
+    }
+  }
+  if (kind === 'webdav') {
+    return {
+      kind: 'webdav',
+      url: webdav.url.trim(),
+      username: webdav.username.trim() || undefined,
+      password: webdav.password === SECRET_MASK ? webdav.password : webdav.password || undefined,
+      tablePrefix: webdav.tablePrefix.trim() || DEFAULT_PREFIX
     }
   }
   const ca = needsCa(sql.ssl) && sql.ca.trim() ? sql.ca.trim() : undefined
@@ -132,7 +169,12 @@ export function buildConfig(kind: SyncDbKind, sql: SqlForm, d1: D1Form): SyncDbC
   }
 }
 
-export function validateForm(kind: SyncDbKind, sql: SqlForm, d1: D1Form): FieldErrors {
+export function validateForm(
+  kind: SyncDbKind,
+  sql: SqlForm,
+  d1: D1Form,
+  webdav: WebdavForm
+): FieldErrors {
   const e: FieldErrors = {}
   if (kind === 'd1') {
     if (!d1.accountId.trim()) e.accountId = 'required'
@@ -141,6 +183,13 @@ export function validateForm(kind: SyncDbKind, sql: SqlForm, d1: D1Form): FieldE
     if (!PREFIX_RE.test(d1.tablePrefix.trim() || DEFAULT_PREFIX)) e.tablePrefix = 'prefixInvalid'
     const base = d1.baseUrl.trim()
     if (base && !/^https?:\/\/[^/\s]+/i.test(base)) e.baseUrl = 'invalidBaseUrl'
+    return e
+  }
+  if (kind === 'webdav') {
+    const url = webdav.url.trim()
+    if (!url) e.url = 'required'
+    else if (!/^https?:\/\/[^/\s]+/i.test(url) || !URL.canParse(url)) e.url = 'invalidBaseUrl'
+    if (!PREFIX_RE.test(webdav.tablePrefix.trim() || DEFAULT_PREFIX)) e.tablePrefix = 'prefixInvalid'
     return e
   }
   if (sql.useUrl) {
@@ -231,6 +280,15 @@ export function redactUrl(url: string): string {
 /** Short human readable target, without secrets. */
 export function describeTarget(cfg: SyncDbConfig): string {
   if (cfg.kind === 'd1') return cfg.databaseId ? `${cfg.databaseId.slice(0, 8)}…` : ''
+  if (cfg.kind === 'webdav') {
+    const raw = cfg.url?.trim() ?? ''
+    try {
+      const u = new URL(raw)
+      return `${u.host}${u.pathname.replace(/\/+$/, '')}`
+    } catch {
+      return redactUrl(raw)
+    }
+  }
   if (cfg.url?.trim()) {
     try {
       const u = new URL(cfg.url.trim())

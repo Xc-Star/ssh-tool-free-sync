@@ -79,7 +79,7 @@ linux:
   # app_id / WM_CLASS: docks and taskbars can then match the running window to its launcher entry.
   syncDesktopName: true
   synopsis: SSH client with SFTP, port forwarding and self-hosted multi-device sync
-  description: Cross-platform SSH client with SFTP, port forwarding, snippets and end-to-end encrypted sync through your own PostgreSQL, MySQL or Cloudflare D1 database.
+  description: Cross-platform SSH client with SFTP, port forwarding, snippets and end-to-end encrypted sync through your own PostgreSQL, MySQL, Cloudflare D1 database or WebDAV folder.
   maintainer: Xc-Star <90129503+Xc-Star@users.noreply.github.com>
   target:
     - AppImage

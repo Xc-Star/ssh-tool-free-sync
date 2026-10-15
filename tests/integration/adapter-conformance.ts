@@ -126,7 +126,7 @@ export function runAdapterConformance(
     it('exposes kind, capabilities and a label without secrets', async (ctx) => {
       requireBackend(ctx)
       const adapter = await makeAdapter(newPrefix())
-      expect(['postgres', 'mysql', 'd1']).toContain(adapter.kind)
+      expect(['postgres', 'mysql', 'd1', 'webdav']).toContain(adapter.kind)
       expect(adapter.label.length).toBeGreaterThan(0)
       for (const secret of opts.secrets?.() ?? []) expect(adapter.label).not.toContain(secret)
       expect(adapter.capabilities.defaultPollSec).toBeGreaterThan(0)

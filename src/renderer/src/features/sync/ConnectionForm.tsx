@@ -30,11 +30,13 @@ import {
   SSL_MODES,
   type SqlForm,
   sqlHost,
-  URL_SCHEMES
+  URL_SCHEMES,
+  type WebdavForm
 } from './model'
 
 const CF_TOKENS_URL = 'https://dash.cloudflare.com/profile/api-tokens'
 const CF_D1_DOCS_URL = 'https://developers.cloudflare.com/d1/'
+const WEBDAV_DOCS_URL = 'https://docs.nextcloud.com/server/latest/user_manual/en/files/access_webdav.html'
 const WRANGLER_CMD = 'npx wrangler d1 create sshtool'
 
 function openExternal(url: string): void {
@@ -181,6 +183,37 @@ export function D1Help({ defaultOpen }: { defaultOpen: boolean }): React.JSX.Ele
         >
           <BookOpen />
           {t('help.openDocs')}
+        </Button>
+      </div>
+    </Disclosure>
+  )
+}
+
+export function WebdavHelp({ defaultOpen }: { defaultOpen: boolean }): React.JSX.Element {
+  const { t } = useTranslation('sync')
+  return (
+    <Disclosure
+      title={t('help.webdavTitle')}
+      icon={<BookOpen />}
+      defaultOpen={defaultOpen}
+      testId="sync-help-webdav"
+    >
+      <div className="flex flex-col gap-2.5 text-xs leading-relaxed text-muted">
+        <p>{t('help.webdav1')}</p>
+        <p>
+          <Trans t={t} i18nKey="help.webdav2" components={{ b: strong }} />
+        </p>
+        <p>{t('help.webdav3')}</p>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => openExternal(WEBDAV_DOCS_URL)}
+          data-testid="sync-open-webdav-docs"
+        >
+          <BookOpen />
+          {t('help.openWebdavDocs')}
         </Button>
       </div>
     </Disclosure>
@@ -498,6 +531,78 @@ export function D1ConnectionForm({
             className="font-mono text-xs"
             disabled={disabled}
             data-testid="sync-field-base-url"
+          />
+        </Field>
+      </Advanced>
+    </div>
+  )
+}
+
+export function WebdavConnectionForm({
+  form,
+  onChange,
+  errors,
+  disabled,
+  savedSecret
+}: FormProps & { form: WebdavForm; onChange: (patch: Partial<WebdavForm>) => void }): React.JSX.Element {
+  const { t } = useTranslation('sync')
+  const err = (k: keyof FieldErrors): string | undefined => {
+    const key = errors?.[k]
+    return key ? t(`form.errors.${key}`) : undefined
+  }
+  const insecure = form.url.trim().toLowerCase().startsWith('http://')
+  return (
+    <div className="flex flex-col gap-4" data-testid="sync-webdav-form">
+      <Field label={t('form.webdavUrl')} error={err('url')} hint={t('form.webdavUrlDesc')}>
+        <Input
+          value={form.url}
+          onChange={(e) => onChange({ url: e.target.value })}
+          placeholder="https://cloud.example.com/remote.php/dav/files/me/sshtool/"
+          className="font-mono text-xs"
+          disabled={disabled}
+          autoFocus
+          data-testid="sync-field-webdav-url"
+        />
+      </Field>
+      <div className="grid grid-cols-1 gap-3 @xl:grid-cols-2">
+        <Field label={t('form.username')} hint={t('form.optional')}>
+          <Input
+            value={form.username}
+            onChange={(e) => onChange({ username: e.target.value })}
+            placeholder="me@example.com"
+            disabled={disabled}
+            data-testid="sync-field-webdav-username"
+          />
+        </Field>
+        <Field label={t('form.password')} hint={t('form.webdavPasswordDesc')}>
+          <SecretInput
+            value={form.password}
+            onChange={(password) => onChange({ password })}
+            saved={savedSecret}
+            disabled={disabled}
+            testId="sync-field-webdav-password"
+          />
+        </Field>
+      </div>
+      {insecure ? (
+        <Callout tone="warning" className="px-3 py-2.5" testId="sync-webdav-insecure">
+          {t('form.webdavInsecure')}
+        </Callout>
+      ) : (
+        <p className="flex items-center gap-1.5 text-xs text-subtle">
+          <ShieldCheck className="size-3.5 shrink-0" />
+          {t('form.webdavSecure')}
+        </p>
+      )}
+      <Advanced defaultOpen={!!errors?.tablePrefix || form.tablePrefix !== 'sshtool_'}>
+        <Field label={t('form.prefix')} error={err('tablePrefix')} hint={t('form.webdavPrefixDesc')}>
+          <Input
+            value={form.tablePrefix}
+            onChange={(e) => onChange({ tablePrefix: e.target.value })}
+            placeholder="sshtool_"
+            className="w-56 font-mono text-xs"
+            disabled={disabled}
+            data-testid="sync-field-prefix"
           />
         </Field>
       </Advanced>

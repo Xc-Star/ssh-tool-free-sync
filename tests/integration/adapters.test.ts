@@ -7,12 +7,13 @@ import { join } from 'node:path'
 import { createConnection, type ConnectionOptions, type RowDataPacket } from 'mysql2/promise'
 import pg from 'pg'
 import { afterAll, beforeAll, describe, expect, it, type TestContext } from 'vitest'
-import type { D1DbConfig, SqlDbConfig, SslMode } from '@shared/types'
+import type { D1DbConfig, SqlDbConfig, SslMode, WebdavDbConfig } from '@shared/types'
 import { SyncAdapterError, type SyncAdapter } from '../../src/main/sync/adapter'
 import { createAdapter, describeDbConfig } from '../../src/main/sync/adapters'
 import { D1Client } from '../../src/main/sync/adapters/d1-client'
 import { formatHlc } from '../../src/main/vault/hlc'
 import { startD1Mock, type D1Mock } from '../helpers/d1-mock-server'
+import { startWebdavMock, type WebdavMock } from '../helpers/webdav-mock-server'
 import { newPrefix, runAdapterConformance, type ConformanceOptions } from './adapter-conformance'
 
 type RawHooks = Pick<ConformanceOptions, 'getSchemaVersion' | 'setSchemaVersion' | 'dropTables'>
@@ -55,7 +56,7 @@ async function closeQuietly(adapter: SyncAdapter): Promise<void> {
 
 describe('createAdapter / describeDbConfig', () => {
   it('describes targets without credentials', () => {
-    const configs: [SqlDbConfig | D1DbConfig, string][] = [
+    const configs: [SqlDbConfig | D1DbConfig | WebdavDbConfig, string][] = [
       [
         {
           kind: 'postgres',
@@ -107,6 +108,16 @@ describe('createAdapter / describeDbConfig', () => {
           tablePrefix: 'sshtool_'
         },
         'Cloudflare D1 · 01234567'
+      ],
+      [
+        {
+          kind: 'webdav',
+          url: 'https://cloud.example.com/dav/sshtool/',
+          username: 'alice',
+          password: 's3cr3t-webdav',
+          tablePrefix: 'sshtool_'
+        },
+        'WebDAV · cloud.example.com/dav/sshtool'
       ]
     ]
     for (const [config, label] of configs) {
@@ -130,6 +141,19 @@ describe('createAdapter / describeDbConfig', () => {
     expect(() => createAdapter({ kind: 'postgres', ssl: 'disable', tablePrefix: '1abc' })).toThrow(
       SyncAdapterError
     )
+    expect(() =>
+      createAdapter({ kind: 'webdav', url: 'https://cloud.example.com/dav/', tablePrefix: '1abc' })
+    ).toThrow(SyncAdapterError)
+  })
+
+  it('never leaks WebDAV credentials embedded in the URL', () => {
+    const adapter = createAdapter({
+      kind: 'webdav',
+      url: 'https://alice:s3cr3t-webdav@cloud.example.com/dav/x/',
+      tablePrefix: 'sshtool_'
+    })
+    expect(adapter.label).toBe('WebDAV · cloud.example.com/dav/x')
+    expect(adapter.label).not.toMatch(/alice|s3cr3t/)
   })
 })
 
@@ -303,6 +327,139 @@ describe('Cloudflare D1 (local mock)', () => {
       ])
       expect(a.rows).toEqual([{ n: 1 }])
       expect(b.rows).toEqual([{ n: '2' }])
+    })
+  })
+})
+
+// ---------------------------------------------------------------- WebDAV (local mock)
+
+describe('WebDAV (local mock)', () => {
+  let mock: WebdavMock
+  beforeAll(async () => {
+    mock = await startWebdavMock()
+  })
+  afterAll(async () => {
+    await mock?.close()
+  })
+
+  const configFor = (
+    m: WebdavMock,
+    prefix = newPrefix(),
+    overrides: Partial<WebdavDbConfig> = {}
+  ): WebdavDbConfig => ({
+    kind: 'webdav',
+    url: m.url,
+    username: m.username,
+    password: m.password,
+    tablePrefix: prefix,
+    ...overrides
+  })
+
+  const rawHooks = (
+    get: () => WebdavMock
+  ): Pick<ConformanceOptions, 'getSchemaVersion' | 'setSchemaVersion' | 'dropTables'> => ({
+    getSchemaVersion: async (prefix) => {
+      const text = get().read(`${prefix}sync.json`)
+      if (!text) return null
+      return String((JSON.parse(text) as { schemaVersion?: number }).schemaVersion)
+    },
+    setSchemaVersion: async (prefix, version) => {
+      const m = get()
+      const name = `${prefix}sync.json`
+      const doc = JSON.parse(m.read(name) ?? '{}') as Record<string, unknown>
+      doc.schemaVersion = Number(version)
+      m.write(name, JSON.stringify(doc))
+    },
+    dropTables: async (prefix) => {
+      const m = get()
+      for (const file of m.files()) if (file.startsWith(prefix)) m.remove(file)
+    }
+  })
+
+  runAdapterConformance('WebDAV (mock)', (prefix) => createAdapter(configFor(mock, prefix)), {
+    ...rawHooks(() => mock),
+    secrets: () => [mock.password]
+  })
+
+  describe('client behaviour', () => {
+    it('retries HTTP 429 responses', async () => {
+      const limited = await startWebdavMock({ failFirst429: 2 })
+      const adapter = createAdapter(configFor(limited))
+      try {
+        await adapter.connect()
+        expect(limited.requests).toBe(4)
+        await adapter.ensureSchema()
+        expect(await adapter.head()).toBe(0)
+      } finally {
+        await closeQuietly(adapter)
+        await limited.close()
+      }
+    })
+
+    it('gives up with a transient rate-limit error after three retries', async () => {
+      const limited = await startWebdavMock({ failFirst429: 10 })
+      try {
+        const err = await expectAdapterError(createAdapter(configFor(limited)).connect(), 'rate-limit')
+        expect(err.transient).toBe(true)
+        expect(limited.requests).toBe(4)
+      } finally {
+        await limited.close()
+      }
+    })
+
+    it('maps rejected credentials to an auth error without leaking them', async () => {
+      const password = 'wrong-password-SECRET-42'
+      const err = await expectAdapterError(
+        createAdapter(configFor(mock, newPrefix(), { password })).connect(),
+        'auth',
+        password
+      )
+      expect(err.transient).toBe(false)
+    })
+
+    it('maps a missing folder to a config error', async () => {
+      const port = new URL(mock.url).port
+      await expectAdapterError(
+        createAdapter(configFor(mock, newPrefix(), { url: `http://127.0.0.1:${port}/nope/` })).connect(),
+        'config'
+      )
+    })
+
+    it('maps an unreachable server to a network error', async () => {
+      const url = `http://127.0.0.1:${await freePort()}/dav/`
+      const err = await expectAdapterError(
+        createAdapter(configFor(mock, newPrefix(), { url })).connect(),
+        'network'
+      )
+      expect(err.transient).toBe(true)
+    })
+
+    it('reports a read-only / full server as a configuration error', async () => {
+      const readOnly = await startWebdavMock({ readOnly: true })
+      const adapter = createAdapter(configFor(readOnly))
+      try {
+        await adapter.connect()
+        await expectAdapterError(adapter.ensureSchema(), 'config')
+      } finally {
+        await closeQuietly(adapter)
+        await readOnly.close()
+      }
+    })
+  })
+
+  describe('servers without strong ETags', () => {
+    let plain: WebdavMock
+    beforeAll(async () => {
+      plain = await startWebdavMock({ noEtag: true })
+    })
+    afterAll(async () => {
+      await plain?.close()
+    })
+    runAdapterConformance('WebDAV (no ETag)', (prefix) => createAdapter(configFor(plain, prefix)), {
+      ...rawHooks(() => plain),
+      secrets: () => [plain.password],
+      writers: 2,
+      itemsPerWriter: 20
     })
   })
 })

@@ -3,8 +3,8 @@ export default {
   subtitle: '通过你自己的数据库，端到端加密地同步保险库。',
   intro: {
     badge: '免费 · 无需注册账号',
-    title: '主机和密钥随处可用——通过你自己的数据库同步',
-    text: 'SSH Tool 通过你自己掌控的 PostgreSQL、MySQL / MariaDB 或 Cloudflare D1 数据库同步保险库。所有数据在离开本设备之前都会用你的主密码加密，数据库中只保存密文。',
+    title: '主机和密钥随处可用——通过你自己的存储同步',
+    text: 'SSH Tool 通过你自己掌控的 PostgreSQL、MySQL / MariaDB、Cloudflare D1 数据库，或任意 WebDAV 目录来同步保险库。所有数据在离开本设备之前都会用你的主密码加密，存储端只保存密文。',
     diagram: {
       devices: '你的设备',
       encrypt: '在设备上加密',
@@ -14,7 +14,7 @@ export default {
       e2e: '端到端加密',
       e2eDesc: '采用 AES-256-GCM。保险库密钥由主密码（Argon2id）保护，绝不会以明文离开你的设备。',
       own: '使用你自己的数据库',
-      ownDesc: 'PostgreSQL、MySQL / MariaDB 或 Cloudflare D1，免费套餐就绰绰有余。',
+      ownDesc: 'PostgreSQL、MySQL / MariaDB、Cloudflare D1，或任意 WebDAV 目录，免费方案就绰绰有余。',
       free: '无需账号，无需订阅',
       freeDesc: '无需注册，中间没有任何第三方服务。永久免费。'
     },
@@ -42,12 +42,15 @@ export default {
     postgres: 'PostgreSQL',
     mysql: 'MySQL / MariaDB',
     d1: 'Cloudflare D1',
+    webdav: 'WebDAV',
     postgresDesc: '借助 LISTEN/NOTIFY 实时推送变更。支持 Supabase、Neon 或自建服务器。',
     mysqlDesc: '任意 MySQL 或 MariaDB 服务器，自建或托管均可。',
     d1Desc: 'Cloudflare 免费套餐中的无服务器 SQLite，无需运维服务器。',
+    webdavDesc: '任意 WebDAV 目录——Nextcloud、ownCloud、群晖、Box 或自建服务器。',
     postgresTag: '实时',
     mysqlTag: '轮询',
-    d1Tag: '无服务器'
+    d1Tag: '无服务器',
+    webdavTag: '文件存储'
   },
   wizard: {
     title: '设置同步',
@@ -72,9 +75,18 @@ export default {
     port: '端口',
     database: '数据库',
     user: '用户名',
+    username: '用户名',
     password: '密码',
     secretSaved: '已保存——留空则保持不变',
     optional: '可选',
+    webdavUrl: '目录 URL',
+    webdavUrlDesc:
+      '用于保存保险库的 WebDAV 目录，例如 …/remote.php/dav/files/me/sshtool/。目录不存在时会自动创建。',
+    webdavPasswordDesc: '如果服务商支持，建议使用应用专用密码（Nextcloud、ownCloud 等）。',
+    webdavInsecure:
+      '该目录通过明文 HTTP 访问。保险库本身仍是端到端加密的，但如果服务器可从公网访问，请改用 HTTPS。',
+    webdavSecure: '保险库文件在上传前就已加密，服务器只会收到密文。',
+    webdavPrefixDesc: '同步文件在目录中的名称前缀。使用不同前缀，可以在同一个目录里保存多个独立的保险库。',
     ssl: 'SSL / TLS',
     sslModes: {
       disable: '禁用',
@@ -133,7 +145,7 @@ export default {
       auth: '请检查用户名和密码；若使用 Cloudflare D1，请检查 API 令牌及其 D1 Edit 权限。',
       tls: 'TLS 证书有问题。请提供 CA 证书，或选择“必需”模式（加密但不验证证书）。',
       noSsl: '服务器不接受加密连接。如果是本机或内网服务器，可以将 SSL 设为“禁用”。',
-      database: '请检查数据库名称；若使用 Cloudflare D1，请检查 Account ID 和 Database ID。'
+      database: '请检查数据库名称；若使用 Cloudflare D1，请检查 Account ID 和 Database ID；若使用 WebDAV，请检查目录 URL。'
     }
   },
   vault: {
@@ -172,7 +184,7 @@ export default {
     doneJoined: '本设备已加入你的保险库，数据已同步。',
     nextTitle: '添加你的其他设备',
     next1: '在另一台设备上安装 SSH Tool，然后打开 设置 → 同步。',
-    next2: '选择同一个数据库，并填写相同的连接信息。',
+    next2: '选择同一个存储，并填写相同的连接信息。',
     next3: '输入主密码，加入保险库。',
     done: '查看同步状态'
   },
@@ -193,6 +205,13 @@ export default {
       '拥有 D1 Edit 权限的令牌可以读取和修改该账户下的所有 D1 数据库。建议为 SSH Tool 单独使用一个 Cloudflare 账户。',
     openTokens: '打开 API 令牌页面',
     openDocs: 'D1 文档',
+    webdavTitle: '如何设置 WebDAV',
+    webdav1:
+      '任何兼容 WebDAV 的存储都可以：Nextcloud、ownCloud、群晖 DiskStation、托管 WebDAV 服务，或开启了 WebDAV 的 Apache / nginx 服务器。',
+    webdav2:
+      '为 SSH Tool 创建一个目录，然后把它的 <b>WebDAV URL</b> 粘贴进来——即服务商在“WebDAV”或“通过 WebDAV 连接”处显示的地址。目录不存在时会自动创建。',
+    webdav3: '如果服务商支持，请使用应用专用密码而不是账号密码。上传的内容始终只有密文。',
+    openWebdavDocs: 'WebDAV 设置指南',
     copy: '复制',
     copied: '已复制'
   },
@@ -207,8 +226,8 @@ export default {
     },
     stateDesc: {
       idle: '所有更改都已在你的设备之间同步。',
-      syncing: '正在与数据库交换加密的更改…',
-      offline: '暂时无法连接数据库，SSH Tool 会自动重试。',
+      syncing: '正在与存储交换加密的更改…',
+      offline: '暂时无法连接存储，SSH Tool 会自动重试。',
       error: '由于出现错误，同步已停止。',
       'needs-password': '输入主密码之前，同步将保持暂停。',
       disabled: '本设备未开启同步。'
@@ -230,7 +249,7 @@ export default {
     synced: '已全部同步',
     syncFailed: '同步失败',
     errorHint: {
-      offline: 'SSH Tool 会自动重试。请检查网络连接以及数据库是否可以访问。',
+      offline: 'SSH Tool 会自动重试。请检查网络连接以及存储是否可以访问。',
       error: '请尝试“立即同步”。如果问题仍然存在，请检查连接，或断开后重新设置同步。'
     },
     disconnectTitle: '断开同步？',

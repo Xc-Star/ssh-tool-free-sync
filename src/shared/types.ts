@@ -290,7 +290,7 @@ export interface HistoryEntry {
 
 // ---------------------------------------------------------------- sync
 
-export type SyncDbKind = 'postgres' | 'mysql' | 'd1'
+export type SyncDbKind = 'postgres' | 'mysql' | 'd1' | 'webdav'
 export type SslMode = 'disable' | 'require' | 'verify-ca' | 'verify-full'
 
 export interface SqlDbConfig {
@@ -318,7 +318,21 @@ export interface D1DbConfig {
   baseUrl?: string
 }
 
-export type SyncDbConfig = SqlDbConfig | D1DbConfig
+/**
+ * A WebDAV collection (Nextcloud, ownCloud, Synology, Apache/nginx mod_dav, Box, …). The vault is
+ * stored as one JSON document inside that folder, guarded by ETag compare-and-swap.
+ */
+export interface WebdavDbConfig {
+  kind: 'webdav'
+  /** Absolute URL of the collection, e.g. https://cloud.example.com/remote.php/dav/files/user/sshtool/ */
+  url: string
+  username?: string
+  password?: string
+  /** File name prefix (same rule as the SQL table prefix). */
+  tablePrefix: string
+}
+
+export type SyncDbConfig = SqlDbConfig | D1DbConfig | WebdavDbConfig
 
 export type SyncState = 'disabled' | 'idle' | 'syncing' | 'offline' | 'error' | 'needs-password'
 

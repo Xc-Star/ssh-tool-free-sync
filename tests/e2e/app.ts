@@ -13,6 +13,13 @@ export interface Running {
 }
 
 /**
+ * Extra Chromium/Electron flags for `_electron.launch`, e.g.
+ * `SSHTOOL_E2E_ARGS="--no-sandbox --disable-gpu"` for containers or sandboxed environments that cannot
+ * start Chromium's own sandbox. Empty by default so normal runs keep the sandbox on.
+ */
+const extraArgs = process.env.SSHTOOL_E2E_ARGS?.split(/\s+/).filter(Boolean) ?? []
+
+/**
  * Launches the built app (out/) with an isolated profile (or an existing one, to simulate a restart).
  * `executablePath` starts a packaged app instead (see tests/package).
  */
@@ -20,7 +27,9 @@ export async function launchApp(name: string, opts: { userData?: string; executa
   const userData = opts.userData ?? fs.mkdtempSync(path.join(os.tmpdir(), `sshtool-e2e-${name}-`))
   const app = await _electron.launch({
     // The project folder (not out/main/index.js) so Electron reads package.json: real app version and name.
-    ...(opts.executablePath ? { executablePath: opts.executablePath, args: [] } : { args: [path.resolve('.')] }),
+    ...(opts.executablePath
+      ? { executablePath: opts.executablePath, args: extraArgs }
+      : { args: [path.resolve('.'), ...extraArgs] }),
     env: { ...process.env, SSHTOOL_USER_DATA: userData, ELECTRON_RENDERER_URL: '' },
     timeout: 60_000
   })

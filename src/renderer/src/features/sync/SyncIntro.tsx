@@ -129,7 +129,7 @@ function SyncIllustration(): React.JSX.Element {
             <Database className="size-6 text-muted" />
             <span className="hidden h-6 w-px bg-line @xl:block" />
             <span className="hidden items-center gap-1.5 @xl:flex">
-              {[BRANDS.postgres, BRANDS.mysql, BRANDS.d1].map((b) => (
+              {[BRANDS.postgres, BRANDS.mysql, BRANDS.d1, BRANDS.webdav].map((b) => (
                 <BrandIcon key={b.title} icon={b} className="size-[18px] text-muted" />
               ))}
             </span>

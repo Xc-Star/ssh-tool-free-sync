@@ -32,13 +32,22 @@ function errorMessage(err: unknown): string {
 
 /** Restores secrets the renderer only saw masked. */
 function unmaskConfig(next: SyncDbConfig, prev: SyncDbConfig | null): SyncDbConfig {
-  const cfg = { ...next }
-  if (cfg.kind === 'd1') {
-    if (cfg.apiToken === SECRET_MASK) cfg.apiToken = prev?.kind === 'd1' ? prev.apiToken : ''
-  } else if (cfg.password === SECRET_MASK) {
-    cfg.password = prev && prev.kind !== 'd1' ? prev.password : undefined
+  if (next.kind === 'd1') {
+    const apiToken = next.apiToken === SECRET_MASK ? (prev?.kind === 'd1' ? prev.apiToken : '') : next.apiToken
+    return { ...next, apiToken }
   }
-  return cfg
+  if (next.kind === 'webdav') {
+    const password =
+      next.password === SECRET_MASK ? (prev?.kind === 'webdav' ? prev.password : undefined) : next.password
+    return { ...next, password }
+  }
+  const password =
+    next.password === SECRET_MASK
+      ? prev && prev.kind !== 'd1' && prev.kind !== 'webdav'
+        ? prev.password
+        : undefined
+      : next.password
+  return { ...next, password }
 }
 
 /** Background sync orchestration: triggers, single-flight runs, backoff, status reporting. */

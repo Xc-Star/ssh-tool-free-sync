@@ -36,6 +36,11 @@ const isDev = !app.isPackaged && !!process.env.ELECTRON_RENDERER_URL
 let mainWindow: BrowserWindow | null = null
 let ctx: AppContext | null = null
 let quitting = false
+/**
+ * True from the moment `will-quit` starts tearing the services down. macOS keeps emitting `activate`
+ * while an app quits, so window creation must be refused until the process actually exits.
+ */
+let shuttingDown = false
 
 const TITLEBAR = {
   dark: { color: '#0d0f17', symbolColor: '#c3c7d6' },
@@ -69,7 +74,9 @@ function isTrustedSender(e: IpcMainEvent | IpcMainInvokeEvent): boolean {
 }
 
 function createWindow(): void {
-  const c = ctx!
+  const c = ctx
+  // Guarded: `activate` can arrive after the context was torn down during quit.
+  if (!c) return
   const saved = c.db.kvGetJson<Rectangle & { maximized?: boolean }>('window.bounds')
   const isMac = process.platform === 'darwin'
   const win = (mainWindow = new BrowserWindow({
@@ -230,16 +237,22 @@ function registerIpc(c: AppContext): void {
 
 function startAutoLock(c: AppContext): void {
   const check = (): void => {
+    // The interval keeps ticking until the process exits, but the context is already torn down then
+    // (its database is closed), so nothing may touch it any more.
+    if (shuttingDown) return
     const minutes = c.settings.get().autoLockMinutes
     if (minutes > 0 && c.keystore.passwordEnabled && c.keystore.unlocked && powerMonitor.getSystemIdleTime() >= minutes * 60) void c.lock()
   }
   setInterval(check, 30_000)
   const lockNow = (): void => {
+    if (shuttingDown) return
     if (c.settings.get().autoLockMinutes > 0) void c.lock()
   }
   powerMonitor.on('lock-screen', lockNow)
   powerMonitor.on('suspend', lockNow)
-  powerMonitor.on('resume', () => c.sync.onFocus())
+  powerMonitor.on('resume', () => {
+    if (!shuttingDown) c.sync.onFocus()
+  })
 }
 
 if (!app.requestSingleInstanceLock()) {
@@ -274,6 +287,8 @@ if (!app.requestSingleInstanceLock()) {
     startAutoLock(ctx)
     createWindow()
     app.on('activate', () => {
+      // macOS emits `activate` (dock icon / Cmd-Tab) during and right after a quit; never resurrect a window then.
+      if (quitting || shuttingDown) return
       if (BrowserWindow.getAllWindows().length === 0) createWindow()
     })
   })
@@ -286,10 +301,10 @@ if (!app.requestSingleInstanceLock()) {
     if (process.platform !== 'darwin') app.quit()
   })
 
-  let shuttingDown = false
   app.on('will-quit', (e) => {
     if (!ctx || shuttingDown) return
     shuttingDown = true
+    // Cancel this quit so the services (sessions, transfers, sync, database) can be torn down first.
     e.preventDefault()
     const c = ctx
     void c
@@ -297,7 +312,9 @@ if (!app.requestSingleInstanceLock()) {
       .catch(() => {})
       .finally(() => {
         ctx = null
-        app.quit()
+        // Must run outside the `will-quit` dispatch: `app.quit()` issued while the event is still
+        // being emitted is silently ignored, which left the app running with no window after ⌘Q.
+        setImmediate(() => app.quit())
       })
   })
 }

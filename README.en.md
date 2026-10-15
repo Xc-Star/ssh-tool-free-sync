@@ -2,7 +2,7 @@
 
 [简体中文](README.md) | **English**
 
-> A cross-platform SSH client that matches Termius feature-for-feature. Sync is free and never touches a vendor server: your data goes into your own PostgreSQL, MySQL / MariaDB, or Cloudflare D1, end-to-end encrypted with your master password — the database only sees ciphertext. Works offline and merges automatically.
+> A cross-platform SSH client that matches Termius feature-for-feature. Sync is free and never touches a vendor server: your data goes into your own PostgreSQL, MySQL / MariaDB, Cloudflare D1 or any WebDAV folder, end-to-end encrypted with your master password — the storage only sees ciphertext. Works offline and merges automatically.
 
 Runs on Windows, macOS and Linux. The interface is available in Simplified Chinese and English; it starts in Chinese — switch it under **设置 → 通用 → 语言** (Settings → General → Language).
 
@@ -26,7 +26,7 @@ Runs on Windows, macOS and Linux. The interface is available in Simplified Chine
 | Snippets | Snippet library (shell-highlighting editor, tags), run in the current terminal, run on several hosts at once, quick insert from the terminal sidebar |
 | Known hosts / Logs | Host key management (import from `~/.ssh/known_hosts`, synced between devices), connection history |
 | Settings | Chinese and English UI (Chinese by default), dark / light / system theme, terminal appearance, customizable shortcuts, SFTP options, app lock (on start and after idle), import & export (`~/.ssh/config`, CSV, encrypted backups) |
-| **Multi-device sync** | Your own database: PostgreSQL (real-time push), MySQL / MariaDB, Cloudflare D1; end-to-end encrypted; works offline and merges automatically when back online; device list, master password change, vault key rotation |
+| **Multi-device sync** | Your own storage: PostgreSQL (real-time push), MySQL / MariaDB, Cloudflare D1, WebDAV folder; end-to-end encrypted; works offline and merges automatically when back online; device list, master password change, vault key rotation |
 
 ---
 
@@ -63,7 +63,7 @@ Runs on Windows, macOS and Linux. The interface is available in Simplified Chine
 - **End-to-end encryption**: when you turn on sync you choose a **master password**. Argon2id derives a key from it that encrypts a randomly generated *vault key*, and every host, key, snippet and other item is encrypted on your device with that vault key (AES-256-GCM) before it is uploaded. The database only stores item IDs, ciphertext, timestamps, deletion markers and sequence numbers — it cannot even see host addresses or item types.
 - **Conflict resolution**: every item carries a hybrid logical clock (HLC) timestamp and the last write wins per item; deletions sync as tombstones. Devices with inaccurate clocks are handled correctly.
 - **Incremental sync plus full checks**: changes are pulled incrementally by sequence number, and a periodic full comparison repairs any divergence (for example after the database was restored from an old backup).
-- **When it syncs**: local changes are pushed about 1.5 seconds after you make them; PostgreSQL receives other devices' changes in real time through `LISTEN/NOTIFY`; MySQL and D1 poll (every 30 / 60 seconds by default, adjustable). Sync also runs when the window gets focus and when the network comes back.
+- **When it syncs**: local changes are pushed about 1.5 seconds after you make them; PostgreSQL receives other devices' changes in real time through `LISTEN/NOTIFY`; MySQL, D1 and WebDAV poll (every 30 / 60 seconds by default, adjustable). Sync also runs when the window gets focus and when the network comes back.
 - **What syncs**: hosts, groups, tags, keys, identities, snippets, port forwarding rules, known hosts, terminal preferences and shortcuts. Not synced: the database connection settings, window state, language / theme, app lock settings, connection logs and serial profiles (port names differ between devices).
 
 > ⚠️ **The master password cannot be recovered**, and changing it requires the current one. Devices that are already signed in keep working and syncing.
@@ -111,6 +111,20 @@ D1 is Cloudflare's serverless SQLite. Its free tier is more than enough for pers
 > A leaked token only exposes ciphertext, but it could be used to delete your data — export an encrypted backup regularly under **Settings → Import & export → Encrypted backup**.
 > The Cloudflare API has a global rate limit (about 1,200 requests per 5 minutes); SSH Tool polls every 60 seconds by default and backs off when limited, so normal use stays far below it.
 
+### WebDAV folder
+
+Any WebDAV-compatible storage works: Nextcloud, ownCloud, Synology DiskStation, a managed WebDAV service, or a plain Apache / nginx server with WebDAV enabled. No database and no server-side component to deploy.
+
+1. Create a folder on your storage, for example `sshtool` (SSH Tool also creates it automatically when it is missing).
+2. Copy the full URL of that folder from your provider's “WebDAV” or “Connect via WebDAV” page, e.g.
+   `https://cloud.example.com/remote.php/dav/files/username/sshtool/`.
+3. Paste the URL into SSH Tool and enter your user name and password — use an **app password** where your provider offers one.
+
+The vault is stored as a single JSON file (default `sshtool_sync.json`) inside that folder. Every update uses an ETag-conditional request (`If-Match`) for optimistic concurrency control, so devices writing at the same time never clobber each other; servers that do not expose ETags fall back to verifying a revision token after the upload.
+
+> Note: a leaked password still only exposes ciphertext, but it could be used to delete that file — export an encrypted backup regularly under **Settings → Import & export → Encrypted backup**.
+> HTTPS is recommended; if the server uses a self-signed certificate, trust that certificate in your operating system first.
+
 ### Security tips
 
 - Enable TLS on the database, use a strong password and a dedicated low-privilege user, and restrict access by IP where you can.
@@ -144,7 +158,7 @@ Requires Node.js 22+.
 ```bash
 npm ci
 npm run dev          # development mode with hot reload
-npm test             # unit + integration tests (built-in SSH test server, D1 mock, embedded PostgreSQL)
+npm test             # unit + integration tests (built-in SSH test server, D1 / WebDAV mocks, embedded PostgreSQL)
 npm run test:e2e     # end-to-end tests (Playwright drives the real app: host → SSH terminal, sync wizard, two-device sync, sync after restart, dialogs, keychain recovery)
 npm run screenshots  # regenerate the README screenshots (docs/screenshots, one set per language)
 npx electron-builder --dir && npm run test:package   # package for this platform and smoke-test it (archive contents, signing, native modules)
@@ -185,7 +199,7 @@ Every shortcut can be changed under **Settings → Shortcuts** (and syncs to you
 
 - No Mosh support (there is no official mosh-client for Windows).
 - OpenSSH user certificate authentication is not supported by the SSH library (ssh2) yet; the certificate field is stored but not used for authentication.
-- MySQL and D1 have no push notifications and rely on polling (the interval is adjustable in the sync settings).
+- MySQL, D1 and WebDAV have no push notifications and rely on polling (the interval is adjustable in the sync settings).
 - Command autocomplete uses locally recorded command history and cannot see the remote shell's own completions (it can be turned off in settings).
 
 ## Tech stack

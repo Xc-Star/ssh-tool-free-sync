@@ -498,6 +498,10 @@ function ConnectionCard({ config, onEdit }: { config: SyncDbConfig; onEdit: () =
     rows.push({ label: t('dashboard.databaseId'), value: config.databaseId, mono: true })
     rows.push({ label: t('dashboard.apiToken'), value: config.apiToken ? '••••••••••••' : '—', mono: true })
     if (config.baseUrl) rows.push({ label: t('dashboard.endpoint'), value: config.baseUrl, mono: true })
+  } else if (config.kind === 'webdav') {
+    rows.push({ label: t('dashboard.url'), value: redactUrl(config.url), mono: true })
+    rows.push({ label: t('dashboard.user'), value: config.username || '—', mono: true })
+    rows.push({ label: t('form.password'), value: config.password ? '••••••••••••' : '—', mono: true })
   } else {
     if (config.url?.trim()) rows.push({ label: t('dashboard.url'), value: redactUrl(config.url), mono: true })
     else {

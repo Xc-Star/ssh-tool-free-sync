@@ -2,7 +2,7 @@
 
 **简体中文** | [English](README.en.md)
 
-> 跨平台 SSH 客户端，功能对标 Termius。同步不收费、不经过官方服务器：数据存进你自己的 PostgreSQL、MySQL / MariaDB 或 Cloudflare D1，主密码端到端加密，数据库里只有密文。支持离线使用与自动合并。
+> 跨平台 SSH 客户端，功能对标 Termius。同步不收费、不经过官方服务器：数据存进你自己的 PostgreSQL、MySQL / MariaDB、Cloudflare D1 或任意 WebDAV 目录，主密码端到端加密，存储端只有密文。支持离线使用与自动合并。
 
 支持 Windows、macOS 与 Linux，界面提供简体中文与英文。
 
@@ -26,7 +26,7 @@
 | 代码片段 | 片段管理（Shell 高亮编辑器、标签）、在当前终端运行、一键在多台主机上运行、终端侧边栏快速插入 |
 | 已知主机 / 日志 | 主机指纹管理（可从 `~/.ssh/known_hosts` 导入，并在设备间同步）、连接历史 |
 | 设置 | 中英文界面（默认中文）、深色/浅色/跟随系统、终端外观、可自定义快捷键、SFTP 选项、应用锁（启动/闲置自动锁定）、导入导出（`~/.ssh/config`、CSV、加密备份） |
-| **多设备同步** | 自建数据库：PostgreSQL（实时推送）、MySQL / MariaDB、Cloudflare D1；端到端加密；离线可用、恢复联网后自动合并；设备列表、修改主密码、轮换密钥 |
+| **多设备同步** | 自建存储：PostgreSQL（实时推送）、MySQL / MariaDB、Cloudflare D1、WebDAV 目录；端到端加密；离线可用、恢复联网后自动合并；设备列表、修改主密码、轮换密钥 |
 
 ---
 
@@ -65,7 +65,7 @@
   连主机地址、条目类型都看不到。
 - **冲突处理**：每个条目都带有混合逻辑时钟（HLC）时间戳，按条目「最后写入者胜出」；删除以墓碑形式同步。设备时钟不准也不会出错。
 - **增量 + 全量校验**：平时按序号增量拉取，并定期做一次全量比对，修复任何不一致（例如数据库被恢复到旧备份）。
-- **同步时机**：本地修改后约 1.5 秒自动推送；PostgreSQL 通过 `LISTEN/NOTIFY` 实时接收其它设备的修改；MySQL 和 D1 定时轮询（默认 30 / 60 秒，可调）；
+- **同步时机**：本地修改后约 1.5 秒自动推送；PostgreSQL 通过 `LISTEN/NOTIFY` 实时接收其它设备的修改；MySQL、D1 与 WebDAV 定时轮询（默认 30 / 60 秒，可调）；
   窗口获得焦点、网络恢复时也会同步。
 - **会同步的数据**：主机、分组、标签、密钥、身份、代码片段、端口转发规则、已知主机、终端偏好与快捷键。
   不会同步：数据库连接信息、窗口状态、语言/主题、应用锁设置、连接日志、串口配置（端口名因设备而异）。
@@ -117,6 +117,21 @@ D1 是 Cloudflare 的 Serverless SQLite，免费额度对个人同步绰绰有�
 > 即使令牌泄露，对方也只能看到密文，但可以删除数据——请定期在「设置 → 导入与导出 → 加密备份」中导出备份。
 > Cloudflare API 有全局速率限制（约 1200 次 / 5 分钟），SSH Tool 默认 60 秒轮询一次并做了退避处理，正常使用远低于该限制。
 
+### WebDAV 目录
+
+任何兼容 WebDAV 的存储都可以：Nextcloud、ownCloud、群晖 DiskStation、托管 WebDAV 服务，或开启了 WebDAV 的 Apache / nginx 服务器。不需要数据库，也不需要额外部署任何服务端程序。
+
+1. 在网盘 / 服务端新建一个目录，例如 `sshtool`（目录不存在时 SSH Tool 也会自动创建）。
+2. 在服务商的「WebDAV」或「通过 WebDAV 连接」页面复制该目录的完整地址，形如
+   `https://cloud.example.com/remote.php/dav/files/用户名/sshtool/`。
+3. 在 SSH Tool 中粘贴该地址，填写用户名与密码（服务商支持时请使用**应用专用密码**）。
+
+保险库以单个 JSON 文件（默认 `sshtool_sync.json`）保存在该目录中，所有更新都通过 ETag 条件请求（`If-Match`）做乐观并发控制，
+因此多台设备同时写入不会互相覆盖；对于不返回 ETag 的服务器会自动退化为「写入后校验版本号」的方式。
+
+> 注意：密码泄露时对方同样只能看到密文，但可以删除该文件——请定期在「设置 → 导入与导出 → 加密备份」中导出备份。
+> 建议使用 HTTPS；若服务器证书为自签名，可在系统中信任该证书后再使用。
+
 ### 安全建议
 
 - 数据库开启 TLS，使用强密码和专用低权限用户，尽量配置 IP 白名单。
@@ -150,7 +165,7 @@ D1 是 Cloudflare 的 Serverless SQLite，免费额度对个人同步绰绰有�
 ```bash
 npm ci
 npm run dev          # 开发模式（热更新）
-npm test             # 单元测试 + 集成测试（内置 SSH 测试服务器、D1 模拟服务、内嵌 PostgreSQL）
+npm test             # 单元测试 + 集成测试（内置 SSH 测试服务器、D1 / WebDAV 模拟服务、内嵌 PostgreSQL）
 npm run test:e2e     # 端到端测试（Playwright 驱动真实应用：建主机→SSH 终端、同步向导、两台设备同步、重启后继续同步、对话框、钥匙串故障恢复）
 npm run screenshots  # 重新生成 README 截图（docs/screenshots，中英文各一套）
 npx electron-builder --dir && npm run test:package   # 打包当前平台并做冒烟测试（安装包内容、签名、原生模块）
@@ -191,7 +206,7 @@ npm run dist:linux   # 打包 Linux（在 Linux 上执行）
 
 - 不支持 Mosh（Windows 上没有官方 mosh-client）。
 - OpenSSH 用户证书认证：SSH 库（ssh2）暂不支持，证书字段目前仅保存，不参与认证。
-- MySQL 与 D1 没有推送通知，依赖轮询（可在同步设置中调整间隔）。
+- MySQL、D1 与 WebDAV 没有推送通知，依赖轮询（可在同步设置中调整间隔）。
 - 命令自动补全基于本地记录的命令历史，无法感知远端 Shell 的补全结果（可在设置中关闭）。
 
 ## 技术栈

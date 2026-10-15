@@ -3,8 +3,8 @@ export default {
   subtitle: 'End-to-end encrypted sync of your vault through your own database.',
   intro: {
     badge: 'Free · No account needed',
-    title: 'Your hosts and keys on every device — synced through your own database',
-    text: 'SSH Tool syncs your vault through a PostgreSQL, MySQL / MariaDB or Cloudflare D1 database that you control. Everything is encrypted with your master password before it leaves this device, so the database only ever stores ciphertext.',
+    title: 'Your hosts and keys on every device — synced through your own storage',
+    text: 'SSH Tool syncs your vault through a PostgreSQL, MySQL / MariaDB or Cloudflare D1 database — or a WebDAV folder — that you control. Everything is encrypted with your master password before it leaves this device, so the storage only ever holds ciphertext.',
     diagram: {
       devices: 'Your devices',
       encrypt: 'Encrypted on device',
@@ -15,7 +15,7 @@ export default {
       e2eDesc:
         'AES-256-GCM. The vault key is protected by your master password (Argon2id) and never leaves your devices unencrypted.',
       own: 'Your own database',
-      ownDesc: 'PostgreSQL, MySQL / MariaDB or Cloudflare D1 — a free tier is more than enough.',
+      ownDesc: 'PostgreSQL, MySQL / MariaDB, Cloudflare D1 or any WebDAV folder — a free tier is more than enough.',
       free: 'No account, no subscription',
       freeDesc: 'Nothing to sign up for and no service in between. Free, forever.'
     },
@@ -43,12 +43,15 @@ export default {
     postgres: 'PostgreSQL',
     mysql: 'MySQL / MariaDB',
     d1: 'Cloudflare D1',
+    webdav: 'WebDAV',
     postgresDesc: 'Changes arrive instantly via LISTEN/NOTIFY. Supabase, Neon or your own server.',
     mysqlDesc: 'Any MySQL or MariaDB server, self-hosted or managed.',
     d1Desc: 'Serverless SQLite on Cloudflare’s free plan. No server to run.',
+    webdavDesc: 'Any WebDAV folder — Nextcloud, ownCloud, Synology, Box or your own server.',
     postgresTag: 'Real-time',
     mysqlTag: 'Polling',
-    d1Tag: 'Serverless'
+    d1Tag: 'Serverless',
+    webdavTag: 'File storage'
   },
   wizard: {
     title: 'Set up sync',
@@ -73,9 +76,19 @@ export default {
     port: 'Port',
     database: 'Database',
     user: 'User',
+    username: 'User name',
     password: 'Password',
     secretSaved: 'Saved — leave empty to keep',
     optional: 'optional',
+    webdavUrl: 'Folder URL',
+    webdavUrlDesc:
+      'The WebDAV folder that stores the vault, e.g. …/remote.php/dav/files/me/sshtool/. It is created automatically when missing.',
+    webdavPasswordDesc: 'Use an app password where your provider offers one (Nextcloud, ownCloud, …).',
+    webdavInsecure:
+      'This folder is reached over plain HTTP. The vault is still encrypted end-to-end, but use HTTPS if the server is reachable from the internet.',
+    webdavSecure: 'The vault file is encrypted before upload, so the server only ever stores ciphertext.',
+    webdavPrefixDesc:
+      'Name prefix of the sync file inside the folder. Use a different prefix to keep separate vaults in one folder.',
     ssl: 'SSL / TLS',
     sslModes: {
       disable: 'Disable',
@@ -139,7 +152,8 @@ export default {
       tls: 'There is a problem with the TLS certificate. Provide the CA certificate, or choose “Require” to encrypt without verifying it.',
       noSsl:
         'The server does not accept encrypted connections. For a local or private server you can set SSL to “Disable”.',
-      database: 'Check the database name — or, for Cloudflare D1, the Account ID and Database ID.'
+      database:
+        'Check the database name — or, for Cloudflare D1, the Account ID and Database ID; for WebDAV, the folder URL.'
     }
   },
   vault: {
@@ -181,7 +195,7 @@ export default {
     doneJoined: 'This device joined your vault and is now in sync.',
     nextTitle: 'Add your other devices',
     next1: 'Install SSH Tool on the other device and open Settings → Sync.',
-    next2: 'Choose the same database and enter the same connection details.',
+    next2: 'Choose the same storage and enter the same connection details.',
     next3: 'Enter your master password to join the vault.',
     done: 'Go to sync status'
   },
@@ -202,6 +216,14 @@ export default {
       'A token with D1 Edit permission can read and change every D1 database in the account. Consider a dedicated Cloudflare account for SSH Tool.',
     openTokens: 'Open API tokens',
     openDocs: 'D1 documentation',
+    webdavTitle: 'How to set up WebDAV',
+    webdav1:
+      'Any WebDAV-compatible storage works: Nextcloud, ownCloud, Synology DiskStation, a managed WebDAV service, or a plain Apache / nginx server with WebDAV enabled.',
+    webdav2:
+      'Create a folder for SSH Tool and paste its <b>WebDAV URL</b> — the address your provider shows under “WebDAV” or “Connect via WebDAV”. The folder is created automatically if it does not exist yet.',
+    webdav3:
+      'Use an app password rather than your account password where the service offers one. Only encrypted data is ever uploaded.',
+    openWebdavDocs: 'WebDAV setup guide',
     copy: 'Copy',
     copied: 'Copied'
   },
@@ -216,8 +238,8 @@ export default {
     },
     stateDesc: {
       idle: 'All changes are synced across your devices.',
-      syncing: 'Exchanging encrypted changes with the database…',
-      offline: 'The database cannot be reached right now. SSH Tool keeps retrying automatically.',
+      syncing: 'Exchanging encrypted changes with the storage…',
+      offline: 'The storage cannot be reached right now. SSH Tool keeps retrying automatically.',
       error: 'Syncing stopped because of an error.',
       'needs-password': 'Syncing is paused until you enter the master password.',
       disabled: 'This device is not syncing.'
@@ -240,7 +262,7 @@ export default {
     syncFailed: 'Sync failed',
     errorHint: {
       offline:
-        'SSH Tool retries automatically. Check your internet connection and whether the database is reachable.',
+        'SSH Tool retries automatically. Check your internet connection and whether the storage is reachable.',
       error:
         'Try “Sync now”. If the problem persists, check the connection or disconnect and set up sync again.'
     },

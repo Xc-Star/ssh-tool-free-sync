@@ -73,7 +73,7 @@ export class SyncAdapterError extends Error {
 }
 
 /**
- * Storage backend for sync. Implementations: PostgreSQL, MySQL/MariaDB, Cloudflare D1.
+ * Storage backend for sync. Implementations: PostgreSQL, MySQL/MariaDB, Cloudflare D1, WebDAV.
  *
  * Contract (verified by tests/integration/adapter-conformance.ts):
  *  - `push` writes an item only when its `hlc` is strictly greater than the stored one

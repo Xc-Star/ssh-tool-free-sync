@@ -4,6 +4,7 @@ import {
   CircleCheck,
   Cloud,
   CloudCheck,
+  CloudUpload,
   KeyRound,
   Laptop,
   LockKeyhole,
@@ -23,7 +24,14 @@ import { Badge, ProgressBar, Spinner } from '@/components/ui/misc'
 import { call, errorMessage } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { Callout } from '@/features/settings/ui'
-import { D1ConnectionForm, D1Help, SqlConnectionForm, SqlHelp } from './ConnectionForm'
+import {
+  D1ConnectionForm,
+  D1Help,
+  SqlConnectionForm,
+  SqlHelp,
+  WebdavConnectionForm,
+  WebdavHelp
+} from './ConnectionForm'
 import { DbLogo } from './DbLogo'
 import { StrengthMeter } from './fields'
 import {
@@ -35,11 +43,14 @@ import {
   describeTarget,
   emptyD1Form,
   emptySqlForm,
+  emptyWebdavForm,
   errorHint,
   isWrongPasswordError,
   type SqlForm,
   sqlFormFrom,
-  validateForm
+  validateForm,
+  type WebdavForm,
+  webdavFormFrom
 } from './model'
 
 type Step = 1 | 2 | 3
@@ -67,9 +78,12 @@ export function SyncWizard({
   const [kind, setKind] = useState<SyncDbKind | null>(initial?.kind ?? null)
   const [step, setStep] = useState<Step>(initial ? 2 : 1)
   const [sql, setSql] = useState<SqlForm>(() =>
-    initial && initial.kind !== 'd1' ? sqlFormFrom(initial) : emptySqlForm()
+    initial && (initial.kind === 'postgres' || initial.kind === 'mysql') ? sqlFormFrom(initial) : emptySqlForm()
   )
   const [d1, setD1] = useState<D1Form>(() => (initial?.kind === 'd1' ? d1FormFrom(initial) : emptyD1Form()))
+  const [webdav, setWebdav] = useState<WebdavForm>(() =>
+    initial?.kind === 'webdav' ? webdavFormFrom(initial) : emptyWebdavForm()
+  )
   const savedSecret =
     !!initial && (initial.kind === 'd1' ? initial.apiToken === SECRET_MASK : initial.password === SECRET_MASK)
   const [showErrors, setShowErrors] = useState(false)
@@ -94,7 +108,7 @@ export function SyncWizard({
     if (top < 48 || top > window.innerHeight - 200) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }, [step])
 
-  const errors = kind ? validateForm(kind, sql, d1) : {}
+  const errors = kind ? validateForm(kind, sql, d1, webdav) : {}
   const patchSql = (p: Partial<SqlForm>): void => {
     setSql((s) => ({ ...s, ...p }))
     setResult(null)
@@ -103,10 +117,14 @@ export function SyncWizard({
     setD1((s) => ({ ...s, ...p }))
     setResult(null)
   }
+  const patchWebdav = (p: Partial<WebdavForm>): void => {
+    setWebdav((s) => ({ ...s, ...p }))
+    setResult(null)
+  }
 
   const chooseKind = (k: SyncDbKind): void => {
     if (k !== kind) {
-      if (k !== 'd1') {
+      if (k === 'postgres' || k === 'mysql') {
         const other = k === 'postgres' ? 'mysql' : 'postgres'
         setSql((s) =>
           s.port === '' || s.port === String(DEFAULT_PORT[other])
@@ -127,7 +145,7 @@ export function SyncWizard({
       setShowErrors(true)
       return
     }
-    const config = buildConfig(kind, sql, d1)
+    const config = buildConfig(kind, sql, d1, webdav)
     setTesting(true)
     setResult(null)
     try {
@@ -246,10 +264,19 @@ export function SyncWizard({
           summary={tested && <TestSummary config={tested.config} result={tested.result} />}
         >
           {kind === 'd1' && <D1Help defaultOpen={!d1.accountId && !editing} />}
+          {kind === 'webdav' && <WebdavHelp defaultOpen={!webdav.url && !editing} />}
           {kind === 'd1' ? (
             <D1ConnectionForm
               form={d1}
               onChange={patchD1}
+              errors={showErrors ? errors : null}
+              disabled={testing}
+              savedSecret={savedSecret}
+            />
+          ) : kind === 'webdav' ? (
+            <WebdavConnectionForm
+              form={webdav}
+              onChange={patchWebdav}
               errors={showErrors ? errors : null}
               disabled={testing}
               savedSecret={savedSecret}
@@ -293,7 +320,7 @@ export function SyncWizard({
               {testing ? t('test.testing') : t('test.button')}
             </Button>
           </div>
-          {kind && kind !== 'd1' && <SqlHelp />}
+          {(kind === 'postgres' || kind === 'mysql') && <SqlHelp />}
         </WizardStep>
 
         <WizardStep
@@ -392,7 +419,8 @@ function WizardStep({
 const DB_TAGS: Record<SyncDbKind, { tone: 'accent' | 'neutral' | 'success'; icon: ReactNode }> = {
   postgres: { tone: 'accent', icon: <Zap /> },
   mysql: { tone: 'neutral', icon: <RefreshCw /> },
-  d1: { tone: 'success', icon: <Cloud /> }
+  d1: { tone: 'success', icon: <Cloud /> },
+  webdav: { tone: 'accent', icon: <CloudUpload /> }
 }
 
 function DbChoice({
@@ -404,7 +432,11 @@ function DbChoice({
 }): React.JSX.Element {
   const { t } = useTranslation('sync')
   return (
-    <div className="grid grid-cols-1 gap-3 @xl:grid-cols-3" role="radiogroup" aria-label={t('wizard.stepDb')}>
+    <div
+      className="grid grid-cols-1 gap-3 @xl:grid-cols-2 @3xl:grid-cols-4"
+      role="radiogroup"
+      aria-label={t('wizard.stepDb')}
+    >
       {DB_KINDS.map((k) => {
         const selected = value === k
         return (
