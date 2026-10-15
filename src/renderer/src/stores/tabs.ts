@@ -219,7 +219,13 @@ export function closeTab(tabId: string): void {
   closeSessions(leaves(tab.root).map((l) => l.sessionId))
   const tabs = st.tabs.filter((t) => t.id !== tabId)
   let activeTabId = st.activeTabId
-  if (activeTabId === tabId) activeTabId = (tabs[idx] ?? tabs[idx - 1] ?? tabs[0]).id
+  if (activeTabId === tabId) {
+    // Move to the neighbouring terminal tab; with none left fall back to the vault — the SFTP tab is
+    // pinned right after it, so picking the previous entry would land there instead.
+    const terminals = st.tabs.filter((t): t is TerminalTab => t.kind === 'terminal')
+    const pos = terminals.findIndex((t) => t.id === tabId)
+    activeTabId = (terminals[pos + 1] ?? terminals[pos - 1])?.id ?? 'vault'
+  }
   useTabs.setState({ tabs, activeTabId })
 }
 

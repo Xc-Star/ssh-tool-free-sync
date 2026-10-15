@@ -128,6 +128,7 @@ function PinnedTab({ id, active, icon, label }: { id: 'vault' | 'sftp'; active: 
     <button
       onClick={() => activateTab(id)}
       data-testid={`tab-${id}`}
+      data-active={active}
       className={cn(
         'flex h-full shrink-0 items-center gap-2 rounded-md px-3 text-[12.5px] font-medium transition-colors',
         active ? 'bg-app text-fg shadow-sm' : 'text-muted hover:bg-panel-hover hover:text-fg'
