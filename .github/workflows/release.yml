@@ -97,12 +97,19 @@ jobs:
           merge-multiple: true
       - name: Checksums and release notes
         run: |
-          (cd dist && find . -maxdepth 1 -type f -printf '%f\n' | sort | xargs sha256sum > SHA256SUMS.txt && cat SHA256SUMS.txt)
+          # upload-artifact keeps the release/<version>/ folder, so collect the files from any depth.
+          mkdir -p assets
+          find dist -type f -exec mv -t assets {} +
+          for ext in exe dmg zip AppImage deb rpm; do
+            ls assets/*."$ext" > /dev/null 2>&1 || { echo "::error::No .$ext package to release"; exit 1; }
+          done
+          (cd assets && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt)
           notes="docs/release-notes/${GITHUB_REF_NAME}.md"
           if [ -f "$notes" ]; then cp "$notes" release-notes.md; else : > release-notes.md; fi
       - uses: softprops/action-gh-release@v2
         with:
           name: SSH Tool ${{ github.ref_name }}
           body_path: release-notes.md
-          files: dist/*
+          files: assets/*
+          fail_on_unmatched_files: true
           generate_release_notes: true
