@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { createServer, type AddressInfo } from 'node:net'
@@ -340,7 +341,23 @@ async function waitForPostgres(port: number, password: string, timeoutMs: number
   }
 }
 
+/** PostgreSQL refuses to run with administrator rights on Windows (e.g. GitHub's Windows runners). */
+function isElevatedWindows(): boolean {
+  if (process.platform !== 'win32') return false
+  // `net session` only succeeds in an elevated process.
+  return spawnSync('net', ['session'], { stdio: 'ignore', windowsHide: true }).status === 0
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number, what: string): Promise<T> {
+  let timer: NodeJS.Timeout | undefined
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${what} did not finish within ${ms / 1000}s`)), ms)
+  })
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
+}
+
 async function startEmbeddedPostgres(): Promise<EmbeddedPg> {
+  if (isElevatedWindows()) throw new Error('PostgreSQL cannot run with administrator rights on Windows')
   const { default: EmbeddedPostgres } = await import('embedded-postgres')
   const dir = await mkdtemp(join(tmpdir(), 'sshtool-pg-'))
   const port = await freePort()
@@ -357,17 +374,19 @@ async function startEmbeddedPostgres(): Promise<EmbeddedPg> {
     onError: (message) => logs.push(String(message))
   })
   const stop = async (): Promise<void> => {
-    await server.stop().catch(() => undefined)
+    await withTimeout(server.stop(), 15_000, 'Stopping PostgreSQL').catch(() => undefined)
     // On Windows the data files can stay locked for a moment after the server process exits.
     await rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 }).catch(() => undefined)
   }
+  // Every step has a deadline (within the 180 s hook timeout): an environment where the server cannot start
+  // skips the suite with a warning instead of failing the whole run on a hook timeout.
   try {
-    await server.initialise()
+    await withTimeout(server.initialise(), 60_000, 'initdb')
     const started = server.start()
     started.catch(() => undefined)
     // start() waits for an English log line; also accept a server that is simply reachable.
-    await Promise.race([started, waitForPostgres(port, password, 60_000)])
-    await server.createDatabase(PG_DB)
+    await Promise.race([started, waitForPostgres(port, password, 45_000)])
+    await withTimeout(server.createDatabase(PG_DB), 20_000, 'CREATE DATABASE')
   } catch (err) {
     await stop()
     const reason = err instanceof Error ? err.message : String(err)

@@ -91,6 +91,8 @@ jobs:
           npx electron-builder --dir --publish never "$@"
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
+          # electron-builder skips signing in pull request builds unless forced; ad-hoc signing needs no secrets.
+          CSC_FOR_PULL_REQUEST: true
       - name: Smoke test (virtual display)
         if: runner.os == 'Linux'
         run: xvfb-run -a npm run test:package

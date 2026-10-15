@@ -6,10 +6,19 @@
   "description": "Cross-platform SSH client with SFTP, port forwarding and self-hosted multi-device sync (PostgreSQL / MySQL / Cloudflare D1).",
   "main": "./out/main/index.js",
   "author": "SSH Tool",
+  "homepage": "https://github.com/Xc-Star/ssh-tool-free-sync#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Xc-Star/ssh-tool-free-sync.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Xc-Star/ssh-tool-free-sync/issues"
+  },
   "license": "MIT",
   "private": true,
   "type": "commonjs",
   "scripts": {
+    "postinstall": "node scripts/postinstall.cjs",
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",

@@ -80,7 +80,7 @@ linux:
   syncDesktopName: true
   synopsis: SSH client with SFTP, port forwarding and self-hosted multi-device sync
   description: Cross-platform SSH client with SFTP, port forwarding, snippets and end-to-end encrypted sync through your own PostgreSQL, MySQL or Cloudflare D1 database.
-  maintainer: SSH Tool contributors <sshtool@users.noreply.github.com>
+  maintainer: Xc-Star <90129503+Xc-Star@users.noreply.github.com>
   target:
     - AppImage
     - deb

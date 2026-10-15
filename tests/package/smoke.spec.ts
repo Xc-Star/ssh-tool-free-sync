@@ -15,8 +15,6 @@ const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8')) as { name: strin
 interface PackagedApp {
   exe: string
   resources: string
-  /** macOS: the .app bundle. */
-  bundle?: string
 }
 
 function findPackagedApp(): PackagedApp {
@@ -31,7 +29,7 @@ function findPackagedApp(): PackagedApp {
   if (!exe) throw new Error(`No packaged app found (looked for ${candidates.join(', ')}). Run "npx electron-builder --dir" first.`)
   if (process.platform === 'darwin') {
     const bundle = path.resolve(exe, '..', '..', '..')
-    return { exe, bundle, resources: path.join(bundle, 'Contents', 'Resources') }
+    return { exe, resources: path.join(bundle, 'Contents', 'Resources') }
   }
   return { exe, resources: path.join(path.dirname(exe), 'resources') }
 }
@@ -61,13 +59,24 @@ test('the archive contains only the app (no sources, tests or local files)', () 
   expect(asarTopLevel(path.join(app.resources, 'app.asar'))).toEqual(['node_modules', 'out', 'package.json', 'resources'])
 })
 
-test('macOS: valid code signature and Chinese locales', () => {
+test('macOS: valid code signature, Chinese locales and an executable pty helper (every architecture)', () => {
   test.skip(process.platform !== 'darwin', 'macOS only')
-  const bundle = app.bundle ?? ''
-  const verify = spawnSync('codesign', ['--verify', '--deep', '--strict', '--verbose=2', bundle], { encoding: 'utf8' })
-  expect(verify.status, verify.stderr).toBe(0)
-  const locales = path.join(bundle, 'Contents', 'Frameworks', 'Electron Framework.framework', 'Resources')
-  for (const locale of ['en', 'zh_CN', 'zh_TW']) expect(fs.existsSync(path.join(locales, `${locale}.lproj`)), `${locale}.lproj`).toBe(true)
+  const root = path.resolve('release', pkg.version)
+  const bundles = ['mac-arm64', 'mac', 'mac-universal']
+    .map((d) => path.join(root, d, `${pkg.productName}.app`))
+    .filter((b) => fs.existsSync(b))
+  expect(bundles.length).toBeGreaterThan(0)
+  for (const bundle of bundles) {
+    const verify = spawnSync('codesign', ['--verify', '--deep', '--strict', '--verbose=2', bundle], { encoding: 'utf8' })
+    expect(verify.status, `${bundle}: ${verify.stderr}`).toBe(0)
+    const locales = path.join(bundle, 'Contents', 'Frameworks', 'Electron Framework.framework', 'Resources')
+    for (const locale of ['en', 'zh_CN', 'zh_TW']) expect(fs.existsSync(path.join(locales, `${locale}.lproj`)), `${bundle}: ${locale}.lproj`).toBe(true)
+    // node-pty starts every local shell through spawn-helper; without the execute bit all local terminals fail.
+    const prebuilds = path.join(bundle, 'Contents', 'Resources', 'app.asar.unpacked', 'node_modules', 'node-pty', 'prebuilds')
+    const helpers = fs.readdirSync(prebuilds).map((d) => path.join(prebuilds, d, 'spawn-helper')).filter((f) => fs.existsSync(f))
+    expect(helpers.length, `${bundle}: spawn-helper`).toBeGreaterThan(0)
+    for (const helper of helpers) expect(fs.statSync(helper).mode & 0o111, `${helper} is not executable`).not.toBe(0)
+  }
 })
 
 test('the installed app starts and runs a local shell (native modules load)', async () => {
