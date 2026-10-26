@@ -6,6 +6,7 @@ import {
   dialog,
   ipcMain,
   Menu,
+  net,
   type IpcMainEvent,
   type IpcMainInvokeEvent,
   powerMonitor,
@@ -278,7 +279,9 @@ if (!app.requestSingleInstanceLock()) {
         const w = chokidar.watch(p, { ignoreInitial: true, awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 100 } })
         w.on('change', onChange)
         return () => void w.close()
-      }
+      },
+      // net.fetch respects the system proxy, unlike Node's bundled fetch.
+      fetchImpl: (url, init) => net.fetch(url, init)
     })
     titleBarTheme = ctx.settings.get().theme === 'light' ? 'light' : 'dark'
     registerIpc(ctx)

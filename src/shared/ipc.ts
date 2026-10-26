@@ -1,3 +1,4 @@
+import type { AiChatRequest, AiConfigInput, AiConfigSummary, AiTestResult } from './ai'
 import type { Item, ItemKind, KindInput, SerialProfileData } from './schemas'
 import type {
   AppInfo,
@@ -164,6 +165,17 @@ export interface Api {
   // updates
   /** Checks GitHub Releases for a newer version now (ignores the autoCheckUpdates setting). */
   'update.check': () => UpdateCheckResult
+
+  // ai
+  'ai.getConfigs': () => AiConfigSummary[]
+  'ai.saveConfig': (config: AiConfigInput) => AiConfigSummary
+  'ai.removeConfig': (id: string) => void
+  'ai.testConfig': (config: AiConfigInput) => AiTestResult
+  'ai.listModels': (config: AiConfigInput) => string[]
+  /** Starts an agent run; results arrive as `ai.*` events. */
+  'ai.chat': (req: AiChatRequest) => void
+  'ai.resolveConfirm': (confirmId: string, approve: boolean, autoRest?: boolean) => void
+  'ai.abort': (conversationId: string) => void
 }
 
 export type ApiMethod = keyof Api
@@ -184,6 +196,11 @@ export interface Events {
   'toast': { level: ToastLevel; message: string; detail?: string }
   'fs.changed': { fsId: string; dir: string }
   'update.available': { version: string; url: string }
+  'ai.delta': { conversationId: string; text: string }
+  'ai.toolCall': { conversationId: string; callId: string; name: string; args: Record<string, unknown> }
+  'ai.confirm': { confirmId: string; conversationId: string; callId: string; name: string; args: Record<string, unknown> }
+  'ai.toolResult': { conversationId: string; callId: string; name: string; ok: boolean; result: string }
+  'ai.done': { conversationId: string; reason: 'stop' | 'maxTurns' | 'aborted' | 'error'; error?: string }
 }
 
 export type EventName = keyof Events

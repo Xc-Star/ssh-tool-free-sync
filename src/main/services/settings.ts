@@ -19,7 +19,8 @@ export class SettingsService {
       this.cache = {
         ...DEFAULT_SETTINGS,
         ...stored,
-        sftp: { ...DEFAULT_SETTINGS.sftp, ...(stored.sftp ?? {}) }
+        sftp: { ...DEFAULT_SETTINGS.sftp, ...(stored.sftp ?? {}) },
+        ai: { ...DEFAULT_SETTINGS.ai, ...(stored.ai ?? {}) }
       }
     }
     return this.cache
@@ -30,10 +31,13 @@ export class SettingsService {
     const next: LocalSettings = {
       ...cur,
       ...patch,
-      sftp: { ...cur.sftp, ...(patch.sftp ?? {}) }
+      sftp: { ...cur.sftp, ...(patch.sftp ?? {}) },
+      ai: { ...cur.ai, ...(patch.ai ?? {}) }
     }
     next.sftp.concurrency = Math.min(8, Math.max(1, Math.round(next.sftp.concurrency)))
     next.autoLockMinutes = Math.max(0, Math.round(next.autoLockMinutes))
+    next.ai.maxTurns = Math.min(100, Math.max(1, Math.round(next.ai.maxTurns)))
+    next.ai.commandTimeoutSec = Math.min(600, Math.max(5, Math.round(next.ai.commandTimeoutSec)))
     this.cache = next
     this.db.kvSetJson(KV_KEY, next)
     this.emitter.emit('settings.changed', next)

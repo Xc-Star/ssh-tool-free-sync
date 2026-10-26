@@ -1,4 +1,5 @@
 import {
+  Bot,
   CloudSync,
   DatabaseBackup,
   FolderSync,
@@ -14,6 +15,7 @@ import { cn } from '@/lib/utils'
 import { useApp } from '@/stores/app'
 import { SyncSection } from '@/features/sync/SyncSection'
 import { AboutSection } from './AboutSection'
+import { AiSection } from './AiSection'
 import { DataSection } from './DataSection'
 import { GeneralSection } from './GeneralSection'
 import { SecuritySection } from './SecuritySection'
@@ -27,6 +29,7 @@ export const SETTINGS_SECTIONS = [
   'terminal',
   'shortcuts',
   'sftp',
+  'ai',
   'sync',
   'security',
   'data',
@@ -44,7 +47,8 @@ const NAV: {
       { id: 'general', icon: SlidersHorizontal },
       { id: 'terminal', icon: SquareTerminal },
       { id: 'shortcuts', icon: Keyboard },
-      { id: 'sftp', icon: FolderSync }
+      { id: 'sftp', icon: FolderSync },
+      { id: 'ai', icon: Bot }
     ]
   },
   {
@@ -138,6 +142,8 @@ function SectionContent({ id }: { id: SettingsSectionId }): React.JSX.Element {
       <ShortcutsSection />
     ) : id === 'sftp' ? (
       <SftpSection />
+    ) : id === 'ai' ? (
+      <AiSection />
     ) : id === 'security' ? (
       <SecuritySection />
     ) : (

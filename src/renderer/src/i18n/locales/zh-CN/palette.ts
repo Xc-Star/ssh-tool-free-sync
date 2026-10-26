@@ -13,6 +13,7 @@ export default {
   localTerminal: '打开本地终端',
   serial: '串口连接',
   openSftp: '打开 SFTP',
+  aiAssistant: 'AI 助手',
   manageSnippets: '管理代码片段',
   syncNow: '立即同步',
   toggleTheme: '切换深色/浅色主题',

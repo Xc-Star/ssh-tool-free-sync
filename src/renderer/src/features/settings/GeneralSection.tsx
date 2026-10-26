@@ -14,6 +14,13 @@ export function useSaveSettings(): (patch: Partial<LocalSettings>) => void {
   return (patch) => void update(patch).catch((err) => toast.error(errorMessage(err)))
 }
 
+/** Saves a partial patch of the nested `ai` settings block, keeping the other fields. */
+export function useSaveAiSettings(): (patch: Partial<LocalSettings['ai']>) => void {
+  const settings = useApp((s) => s.settings)
+  const update = useApp((s) => s.updateSettings)
+  return (patch) => void update({ ai: { ...settings.ai, ...patch } }).catch((err) => toast.error(errorMessage(err)))
+}
+
 export function GeneralSection(): React.JSX.Element {
   const { t } = useTranslation('settings')
   const { t: tc } = useTranslation()

@@ -22,6 +22,7 @@ export class SshSession extends BaseSession {
   private conn?: SshConnection
   private stream?: ClientChannel
   private codec: TextCodec = makeCodec('utf-8')
+  private charset?: string
   private abort?: AbortController
   private historyId?: number
   private cols: number
@@ -85,6 +86,7 @@ export class SshSession extends BaseSession {
       }
       this.stream = stream
       this.codec = makeCodec(ep.charset)
+      this.charset = ep.charset
       stream.on('data', (d: Buffer) => this.pump.push(this.codec.decode(d)))
       stream.stderr.on('data', (d: Buffer) => this.pump.push(this.codec.decode(d)))
       stream.on('close', () => this.onRemoteClosed())
@@ -150,6 +152,47 @@ export class SshSession extends BaseSession {
 
   write(data: string): void {
     if (this.stream && this.info.status === 'connected') this.stream.write(this.codec.encode(data))
+  }
+
+  /**
+   * Types text into the interactive shell and captures the terminal output that follows
+   * (quiet-period or timeout based). Uses its own codec: the session codec is stateful and
+   * already consumes every chunk for the output pump.
+   */
+  async captureWrite(text: string, opts: { quietMs?: number; timeoutMs?: number; maxChars?: number } = {}): Promise<string> {
+    const stream = this.stream
+    if (!stream || this.info.status !== 'connected') throw new Error('Session is not connected')
+    const quietMs = Math.max(200, opts.quietMs ?? 1500)
+    const timeoutMs = Math.min(60_000, Math.max(1000, opts.timeoutMs ?? 30_000))
+    const maxChars = opts.maxChars ?? 32_768
+    const codec = makeCodec(this.charset)
+    return await new Promise<string>((resolve) => {
+      let captured = ''
+      let settled = false
+      let quietTimer: NodeJS.Timeout | undefined
+      const finish = (): void => {
+        if (settled) return
+        settled = true
+        clearTimeout(hardTimer)
+        if (quietTimer) clearTimeout(quietTimer)
+        stream.removeListener('data', onData)
+        stream.removeListener('close', finish)
+        resolve(captured.slice(-maxChars))
+      }
+      const hardTimer = setTimeout(finish, timeoutMs)
+      const onData = (d: Buffer): void => {
+        captured += codec.decode(d)
+        if (quietTimer) clearTimeout(quietTimer)
+        if (captured.length >= maxChars) {
+          finish()
+          return
+        }
+        quietTimer = setTimeout(finish, quietMs)
+      }
+      stream.on('data', onData)
+      stream.on('close', finish)
+      this.write(text)
+    })
   }
 
   resize(cols: number, rows: number): void {

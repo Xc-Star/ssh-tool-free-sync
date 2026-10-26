@@ -13,6 +13,7 @@ export default {
   localTerminal: 'Open local terminal',
   serial: 'Serial connection',
   openSftp: 'Open SFTP',
+  aiAssistant: 'AI Assistant',
   manageSnippets: 'Manage snippets',
   syncNow: 'Sync now',
   toggleTheme: 'Toggle dark / light theme',

@@ -31,6 +31,7 @@ export default {
   regex: 'Regular expression',
   noMatch: 'No results',
   snippets: 'Snippets',
+  aiAssistant: 'AI Assistant',
   snippetsEmpty: 'No snippets yet',
   snippetsSearch: 'Search snippets',
   paste_: 'Paste into terminal',

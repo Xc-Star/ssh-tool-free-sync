@@ -1,4 +1,4 @@
-import { Braces, ClipboardCopy, ClipboardPaste, Eraser, FolderOpen, Radio, RotateCw, Save, Search, SquareSplitHorizontal, SquareSplitVertical, TextSelect, X } from 'lucide-react'
+import { Braces, Bot, ClipboardCopy, ClipboardPaste, Eraser, FolderOpen, Radio, RotateCw, Save, Search, SquareSplitHorizontal, SquareSplitVertical, TextSelect, X } from 'lucide-react'
 import { Fragment, useEffect, useRef } from 'react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
 import { useTranslation } from 'react-i18next'
@@ -27,13 +27,15 @@ import {
 } from './registry'
 import { SearchBar } from './SearchBar'
 import { SnippetsPanel } from './SnippetsPanel'
+import { AiPanel } from '@/features/ai/AiPanel'
 
 interface TerminalUiState {
   searchTabId: string | null
   snippetsOpen: boolean
+  aiOpen: boolean
 }
 
-export const useTerminalUi = create<TerminalUiState>(() => ({ searchTabId: null, snippetsOpen: false }))
+export const useTerminalUi = create<TerminalUiState>(() => ({ searchTabId: null, snippetsOpen: false, aiOpen: false }))
 
 /** Keeps xterm options in sync with the synced terminal preferences and theme. */
 export function TerminalPrefsSync(): null {
@@ -47,6 +49,7 @@ export function TerminalView({ tab, visible }: { tab: TerminalTab; visible: bool
   const { t } = useTranslation('terminal')
   const searchOpen = useTerminalUi((s) => s.searchTabId === tab.id)
   const snippetsOpen = useTerminalUi((s) => s.snippetsOpen)
+  const aiOpen = useTerminalUi((s) => s.aiOpen)
   const activeLeaf = leaves(tab.root).find((l) => l.id === tab.activePaneId) ?? leaves(tab.root)[0]
   const multi = leaves(tab.root).length > 1
 
@@ -72,6 +75,9 @@ export function TerminalView({ tab, visible }: { tab: TerminalTab; visible: bool
             <ToolbarButton tip={t('snippets')} active={snippetsOpen} onClick={() => useTerminalUi.setState((s) => ({ snippetsOpen: !s.snippetsOpen }))}>
               <Braces />
             </ToolbarButton>
+            <ToolbarButton tip={t('aiAssistant')} active={aiOpen} onClick={() => useTerminalUi.setState((s) => ({ aiOpen: !s.aiOpen }))}>
+              <Bot />
+            </ToolbarButton>
             <ToolbarButton tip={t('splitRight')} onClick={() => activeLeaf && void splitPane(tab.id, activeLeaf.id, 'horizontal')}>
               <SquareSplitHorizontal />
             </ToolbarButton>
@@ -86,6 +92,7 @@ export function TerminalView({ tab, visible }: { tab: TerminalTab; visible: bool
           </div>
         </div>
       </div>
+      {aiOpen && visible && <AiPanel sessionId={activeLeaf?.sessionId} onClose={() => useTerminalUi.setState({ aiOpen: false })} />}
       {snippetsOpen && visible && <SnippetsPanel sessionId={activeLeaf?.sessionId} onClose={() => useTerminalUi.setState({ snippetsOpen: false })} />}
     </div>
   )

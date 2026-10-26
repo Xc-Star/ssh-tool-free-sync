@@ -3,6 +3,9 @@ import os from 'node:os'
 import path from 'node:path'
 import { PREF_ITEM_ID, terminalPrefsSchema, type TerminalPrefs } from '@shared/schemas'
 import type { LockStatus, SyncDbConfig } from '@shared/types'
+import { AiService } from './ai/agent'
+import { AiConfigStore } from './ai/config-store'
+import type { FetchImpl } from './ai/providers'
 import { ForwardService } from './forward/forward-service'
 import type { Emitter } from './services/emitter'
 import { HistoryService } from './services/history'
@@ -31,6 +34,8 @@ export interface ContextOptions {
   describeDb: (cfg: SyncDbConfig) => string
   openPath?: (p: string) => Promise<string>
   watchFile?: (p: string, onChange: () => void) => () => void
+  /** HTTP client for AI providers (Electron net.fetch in the app; a fake in tests). */
+  fetchImpl?: FetchImpl
   kdf?: KdfParams
   dbFile?: string
 }
@@ -53,6 +58,8 @@ export class AppContext {
   readonly forwards: ForwardService
   readonly sync: SyncService
   readonly updater: UpdateService
+  readonly aiStore: AiConfigStore
+  readonly ai: AiService
   readonly emitter: Emitter
   private keystoreError: string | undefined
 
@@ -124,6 +131,15 @@ export class AppContext {
       appVersion: opts.appVersion,
       getSettings: () => this.settings.get(),
       emitter: opts.emitter
+    })
+    this.aiStore = new AiConfigStore(this.db, opts.protector)
+    this.ai = new AiService({
+      store: this.aiStore,
+      settings: this.settings,
+      sessions: this.sessions,
+      pool: this.pool,
+      emitter: opts.emitter,
+      fetchImpl: opts.fetchImpl ?? ((url, init) => fetch(url, init))
     })
     this.vault.onChange = (kinds) => {
       this.emitter.emit('vault.changed', { kinds })

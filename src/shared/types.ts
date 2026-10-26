@@ -51,6 +51,13 @@ export interface LocalSettings {
     conflictPolicy: ConflictPolicy
     defaultLocalPath?: string
   }
+  ai: {
+    activeConfigId?: string
+    /** Trust mode: agent commands run without per-command approval. */
+    autoApprove: boolean
+    maxTurns: number
+    commandTimeoutSec: number
+  }
 }
 
 export const DEFAULT_SETTINGS: LocalSettings = {
@@ -62,7 +69,8 @@ export const DEFAULT_SETTINGS: LocalSettings = {
   autoLockMinutes: 0,
   confirmOnClose: true,
   autoCheckUpdates: true,
-  sftp: { concurrency: 3, showHidden: false, conflictPolicy: 'ask' }
+  sftp: { concurrency: 3, showHidden: false, conflictPolicy: 'ask' },
+  ai: { autoApprove: false, maxTurns: 30, commandTimeoutSec: 120 }
 }
 
 // ---------------------------------------------------------------- updates

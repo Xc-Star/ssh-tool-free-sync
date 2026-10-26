@@ -313,6 +313,16 @@ export function createHandlers(ctx: AppContext, platform: PlatformBridge): Handl
     'serial.defaultProfile': () => defaultSerialProfile(),
 
     // ---------------------------------------------------------------- updates
-    'update.check': () => ctx.updater.checkNow()
+    'update.check': () => ctx.updater.checkNow(),
+
+    // ---------------------------------------------------------------- ai
+    'ai.getConfigs': () => ctx.aiStore.summaries(),
+    'ai.saveConfig': (config) => ctx.aiStore.save(config),
+    'ai.removeConfig': (id) => ctx.aiStore.remove(id),
+    'ai.testConfig': (config) => ctx.ai.testConfig(config),
+    'ai.listModels': (config) => ctx.ai.listModels(config),
+    'ai.chat': (req) => ctx.ai.chat(req),
+    'ai.resolveConfirm': (confirmId, approve, autoRest) => ctx.ai.resolveConfirm(confirmId, approve, autoRest),
+    'ai.abort': (conversationId) => ctx.ai.abort(conversationId)
   }
 }

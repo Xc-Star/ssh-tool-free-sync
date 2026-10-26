@@ -1,13 +1,14 @@
 import { Command } from 'cmdk'
-import { Braces, FolderOpen, FolderPlus, Lock, Moon, Plus, RefreshCcw, Server, Settings, Sun, Terminal, Usb, Zap } from 'lucide-react'
+import { Bot, Braces, FolderOpen, FolderPlus, Lock, Moon, Plus, RefreshCcw, Server, Settings, Sun, Terminal, Usb, Zap } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { parseQuickConnect } from '@shared/util'
 import { call } from '@/lib/api'
 import { HostAvatar } from './HostAvatar'
 import { typeInto } from '@/features/terminal/registry'
+import { useTerminalUi } from '@/features/terminal/TerminalView'
 import { useApp } from '@/stores/app'
-import { activateTab, activeSessionId, openHost, openTab } from '@/stores/tabs'
+import { activateTab, activeSessionId, findTabBySession, openHost, openTab } from '@/stores/tabs'
 import { openEditor, useUi } from '@/stores/ui'
 import { useItems } from '@/stores/vault'
 
@@ -121,6 +122,20 @@ export function CommandPalette(): React.JSX.Element | null {
             <Item value="action local terminal" icon={<Terminal />} label={t('localTerminal')} onSelect={() => run(() => void openTab({ kind: 'local' }))} />
             <Item value="action serial" icon={<Usb />} label={t('serial')} onSelect={() => run(() => useUi.setState({ serialDialogOpen: true }))} />
             <Item value="action sftp" icon={<FolderOpen />} label={t('openSftp')} onSelect={() => run(() => activateTab('sftp'))} />
+            {sid && (
+              <Item
+                value="action ai assistant"
+                icon={<Bot />}
+                label={t('aiAssistant')}
+                onSelect={() =>
+                  run(() => {
+                    const tab = findTabBySession(sid)
+                    if (tab) activateTab(tab.id)
+                    useTerminalUi.setState({ aiOpen: true })
+                  })
+                }
+              />
+            )}
             <Item value="action snippets" icon={<Braces />} label={t('manageSnippets')} onSelect={() => run(() => (activateTab('vault'), useApp.getState().setSection('snippets')))} />
             {syncConfigured && <Item value="action sync now" icon={<RefreshCcw />} label={t('syncNow')} onSelect={() => run(() => void call('sync.now').catch(() => {}))} />}
             <Item

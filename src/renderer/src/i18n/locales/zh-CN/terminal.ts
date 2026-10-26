@@ -31,6 +31,7 @@ export default {
   regex: '正则表达式',
   noMatch: '无匹配',
   snippets: '代码片段',
+  aiAssistant: 'AI 助手',
   snippetsEmpty: '还没有代码片段',
   snippetsSearch: '搜索代码片段',
   paste_: '粘贴到终端',
