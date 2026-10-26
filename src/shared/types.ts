@@ -44,6 +44,7 @@ export interface LocalSettings {
   autoLockMinutes: number
   localShell?: string
   confirmOnClose: boolean
+  autoCheckUpdates: boolean
   sftp: {
     concurrency: number
     showHidden: boolean
@@ -60,8 +61,17 @@ export const DEFAULT_SETTINGS: LocalSettings = {
   sidebarCollapsed: false,
   autoLockMinutes: 0,
   confirmOnClose: true,
+  autoCheckUpdates: true,
   sftp: { concurrency: 3, showHidden: false, conflictPolicy: 'ask' }
 }
+
+// ---------------------------------------------------------------- updates
+
+/** Result of checking GitHub Releases for a newer version. `unavailable` = GitHub could not be reached (offline, rate-limited), so no verdict exists. */
+export type UpdateCheckResult =
+  | { status: 'up-to-date'; currentVersion: string }
+  | { status: 'unavailable'; currentVersion: string }
+  | { status: 'available'; version: string; url: string; currentVersion: string }
 
 // ---------------------------------------------------------------- sessions
 

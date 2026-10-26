@@ -116,5 +116,10 @@ export default {
     dark: '深色',
     light: '浅色',
     system: '跟随系统'
+  },
+  update: {
+    toastTitle: '发现新版本 v{{version}}',
+    toastDesc: '可前往 GitHub 下载最新版本。',
+    goDownload: '前往下载'
   }
 }

@@ -310,6 +310,9 @@ export function createHandlers(ctx: AppContext, platform: PlatformBridge): Handl
     },
 
     // ---------------------------------------------------------------- serial
-    'serial.defaultProfile': () => defaultSerialProfile()
+    'serial.defaultProfile': () => defaultSerialProfile(),
+
+    // ---------------------------------------------------------------- updates
+    'update.check': () => ctx.updater.checkNow()
   }
 }

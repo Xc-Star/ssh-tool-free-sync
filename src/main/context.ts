@@ -8,6 +8,7 @@ import type { Emitter } from './services/emitter'
 import { HistoryService } from './services/history'
 import { PromptService } from './services/prompts'
 import { SettingsService } from './services/settings'
+import { UpdateService } from './services/updater'
 import { SessionManager } from './sessions/session-manager'
 import { FsService } from './sftp/fs-service'
 import { TransferQueue } from './sftp/transfer-queue'
@@ -51,6 +52,7 @@ export class AppContext {
   readonly transfers: TransferQueue
   readonly forwards: ForwardService
   readonly sync: SyncService
+  readonly updater: UpdateService
   readonly emitter: Emitter
   private keystoreError: string | undefined
 
@@ -117,6 +119,11 @@ export class AppContext {
       createAdapter: opts.createAdapter,
       describe: opts.describeDb,
       kdf
+    })
+    this.updater = new UpdateService({
+      appVersion: opts.appVersion,
+      getSettings: () => this.settings.get(),
+      emitter: opts.emitter
     })
     this.vault.onChange = (kinds) => {
       this.emitter.emit('vault.changed', { kinds })
@@ -211,6 +218,9 @@ export class AppContext {
   }
 
   async shutdown(): Promise<void> {
+    // Not in stopActivity(): app lock must not permanently end update checks (settings are
+    // readable while locked and the check never touches the vault).
+    this.updater.stop()
     await this.stopActivity()
     this.db.close()
   }

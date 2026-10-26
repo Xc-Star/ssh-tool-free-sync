@@ -8,7 +8,11 @@ import { Badge } from '@/components/ui/misc'
 import { call, errorMessage } from '@/lib/api'
 import { copyText } from '@/lib/utils'
 import { useApp } from '@/stores/app'
-import { SettingsCard, SettingsGroup } from './ui'
+import { Callout, SettingsCard, SettingsGroup } from './ui'
+
+function openExternal(url: string): void {
+  call('app.openExternal', url).catch((err) => toast.error(errorMessage(err)))
+}
 
 const PLATFORMS = ['win32', 'darwin', 'linux']
 
@@ -66,11 +70,31 @@ function InfoRow({
 export function AboutSection(): React.JSX.Element {
   const { t } = useTranslation('settings')
   const info = useApp((s) => s.info)
+  const update = useApp((s) => s.update)
+  const clearUpdate = useApp((s) => s.clearUpdate)
+  const [checking, setChecking] = useState(false)
   const platform = info
     ? PLATFORMS.includes(info.platform)
       ? t(`about.platforms.${info.platform}`)
       : info.platform
     : ''
+
+  const checkNow = (): void => {
+    setChecking(true)
+    void call('update.check')
+      .then((result) => {
+        if (result.status === 'available') {
+          // The banner state; the one-time toast comes from the update.available event in App.
+          useApp.setState({ update: { version: result.version, url: result.url } })
+        } else if (result.status === 'up-to-date') {
+          toast.info(t('about.upToDate'))
+        } else {
+          toast.info(t('about.noNewVersion'))
+        }
+      })
+      .catch(() => toast.info(t('about.noNewVersion')))
+      .finally(() => setChecking(false))
+  }
 
   return (
     <div data-testid="settings-about">
@@ -140,6 +164,49 @@ export function AboutSection(): React.JSX.Element {
           </SettingsCard>
         </SettingsGroup>
       )}
+
+      <SettingsGroup title={t('about.updates')}>
+        <SettingsCard>
+          {update && (
+            <div className="p-4">
+              <Callout
+                tone="success"
+                title={t('about.updateAvailable', { version: update.version })}
+                testId="about-update-banner"
+                action={
+                  <>
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      data-testid="about-update-download"
+                      onClick={() => openExternal(update.url)}
+                    >
+                      {t('about.goDownload')}
+                    </Button>
+                    <Button size="sm" variant="secondary" onClick={() => clearUpdate()}>
+                      {t('about.later')}
+                    </Button>
+                  </>
+                }
+              >
+                {t('about.updateAvailableDesc', { current: info?.version ?? '' })}
+              </Callout>
+            </div>
+          )}
+          <InfoRow label={t('about.updatesLabel')}>
+            <Button
+              size="sm"
+              variant="secondary"
+              className="font-sans"
+              disabled={checking}
+              onClick={checkNow}
+              data-testid="about-check-updates"
+            >
+              {checking ? t('about.checking') : t('about.checkNow')}
+            </Button>
+          </InfoRow>
+        </SettingsCard>
+      </SettingsGroup>
 
       <SettingsGroup title={t('about.openSource')}>
         <SettingsCard>

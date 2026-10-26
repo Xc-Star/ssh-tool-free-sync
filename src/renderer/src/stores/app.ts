@@ -13,6 +13,8 @@ interface AppState {
   lock: LockStatus
   sync: SyncStatus
   forwards: Record<string, ForwardState>
+  /** Newer GitHub release detected by the main process; dismissed per session, never persisted. */
+  update: { version: string; url: string } | null
   section: Section
   settingsSection: string
   resolvedTheme: 'dark' | 'light'
@@ -20,6 +22,7 @@ interface AppState {
   setSection: (s: Section, settingsSection?: string) => void
   setCommandOpen: (open: boolean) => void
   updateSettings: (patch: Partial<LocalSettings>) => Promise<void>
+  clearUpdate: () => void
 }
 
 const media = window.matchMedia('(prefers-color-scheme: dark)')
@@ -42,6 +45,7 @@ export const useApp = create<AppState>((set) => ({
   lock: { locked: false, passwordEnabled: false, backend: '', weak: false, autoLockMinutes: 0 },
   sync: { configured: false, state: 'disabled', pendingChanges: 0, realtime: false, pollIntervalSec: 60, reconcileIntervalMin: 15 },
   forwards: {},
+  update: null,
   section: 'hosts',
   settingsSection: 'general',
   resolvedTheme: 'dark',
@@ -52,7 +56,8 @@ export const useApp = create<AppState>((set) => ({
     const settings = await call('settings.set', patch)
     applySettings(settings)
     set({ settings })
-  }
+  },
+  clearUpdate: () => set({ update: null })
 }))
 
 function applySettings(settings: LocalSettings): void {
@@ -87,6 +92,7 @@ export async function initApp(): Promise<void> {
   on('lock.changed', (lock) => useApp.setState({ lock }))
   on('sync.status', (sync) => useApp.setState({ sync }))
   on('forward.states', (list) => useApp.setState({ forwards: Object.fromEntries(list.map((f) => [f.ruleId, f])) }))
+  on('update.available', (update) => useApp.setState({ update }))
   media.addEventListener('change', () => {
     const s = useApp.getState().settings
     if (s.theme === 'system') applySettings(s)

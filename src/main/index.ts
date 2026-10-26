@@ -285,6 +285,7 @@ if (!app.requestSingleInstanceLock()) {
     buildMenu()
     await ctx.init()
     startAutoLock(ctx)
+    ctx.updater.start()
     createWindow()
     app.on('activate', () => {
       // macOS emits `activate` (dock icon / Cmd-Tab) during and right after a quit; never resurrect a window then.

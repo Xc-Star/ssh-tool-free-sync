@@ -116,5 +116,10 @@ export default {
     dark: 'Dark',
     light: 'Light',
     system: 'System'
+  },
+  update: {
+    toastTitle: 'New version v{{version}} available',
+    toastDesc: 'Download the latest release from GitHub.',
+    goDownload: 'Download'
   }
 }

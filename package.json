@@ -2,7 +2,7 @@
   "name": "ssh-tool",
   "productName": "SSH Tool",
   "desktopName": "ssh-tool.desktop",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Cross-platform SSH client with SFTP, port forwarding and self-hosted multi-device sync (PostgreSQL / MySQL / Cloudflare D1 / WebDAV).",
   "main": "./out/main/index.js",
   "author": "SSH Tool",

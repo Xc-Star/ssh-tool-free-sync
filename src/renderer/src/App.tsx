@@ -1,5 +1,6 @@
 import { Toaster, toast } from 'sonner'
 import { useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { CommandPalette } from './components/CommandPalette'
 import { LockScreen } from './components/LockScreen'
 import { PromptHost } from './components/PromptHost'
@@ -19,7 +20,7 @@ import { RunSnippetDialog } from './features/snippets/RunSnippetDialog'
 import { SnippetsPage } from './features/snippets/SnippetsPage'
 import { SerialDialog } from './features/terminal/SerialDialog'
 import { TerminalPrefsSync, TerminalView } from './features/terminal/TerminalView'
-import { on } from './lib/api'
+import { call, on } from './lib/api'
 import { useGlobalShortcuts } from './lib/use-shortcuts'
 import { cn } from './lib/utils'
 import { useApp } from './stores/app'
@@ -52,6 +53,7 @@ function SectionPage(): React.JSX.Element {
 }
 
 export function App(): React.JSX.Element {
+  const { t } = useTranslation('common')
   const locked = useApp((s) => s.lock.locked)
   const theme = useApp((s) => s.resolvedTheme)
   const activeTabId = useTabs((s) => s.activeTabId)
@@ -65,6 +67,20 @@ export function App(): React.JSX.Element {
         fn(message, { description: detail })
       }),
     []
+  )
+
+  useEffect(
+    () =>
+      on('update.available', ({ version, url }) => {
+        toast.info(t('update.toastTitle', { version }), {
+          description: t('update.toastDesc'),
+          action: {
+            label: t('update.goDownload'),
+            onClick: () => void call('app.openExternal', url).catch(() => {})
+          }
+        })
+      }),
+    [t]
   )
 
   return (

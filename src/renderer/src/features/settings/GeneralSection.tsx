@@ -89,6 +89,16 @@ export function GeneralSection(): React.JSX.Element {
             />
           </SettingsRow>
           <SettingsRow
+            label={t('general.autoCheckUpdates')}
+            description={t('general.autoCheckUpdatesDesc')}
+          >
+            <Switch
+              checked={settings.autoCheckUpdates}
+              onCheckedChange={(autoCheckUpdates) => save({ autoCheckUpdates })}
+              data-testid="settings-auto-check-updates"
+            />
+          </SettingsRow>
+          <SettingsRow
             label={t('general.localShell')}
             description={
               <>

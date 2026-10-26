@@ -25,7 +25,8 @@ import type {
   SyncTestResult,
   TextFileContent,
   ToastLevel,
-  TransferInfo
+  TransferInfo,
+  UpdateCheckResult
 } from './types'
 
 export interface UpsertOptions {
@@ -159,6 +160,10 @@ export interface Api {
 
   // serial helpers
   'serial.defaultProfile': () => SerialProfileData
+
+  // updates
+  /** Checks GitHub Releases for a newer version now (ignores the autoCheckUpdates setting). */
+  'update.check': () => UpdateCheckResult
 }
 
 export type ApiMethod = keyof Api
@@ -178,6 +183,7 @@ export interface Events {
   'history.changed': Record<string, never>
   'toast': { level: ToastLevel; message: string; detail?: string }
   'fs.changed': { fsId: string; dir: string }
+  'update.available': { version: string; url: string }
 }
 
 export type EventName = keyof Events
