@@ -2,7 +2,7 @@
 
 [简体中文](README.md) | **English**
 
-> A cross-platform SSH client that matches Termius feature-for-feature. Sync is free and never touches a vendor server: your data goes into your own PostgreSQL, MySQL / MariaDB, Cloudflare D1 or any WebDAV folder, end-to-end encrypted with your master password — the storage only sees ciphertext. Works offline and merges automatically.
+> A cross-platform SSH client that matches Termius feature-for-feature. Sync is free and never touches a vendor server: your data goes into your own PostgreSQL, MySQL / MariaDB, Cloudflare D1 or any WebDAV folder, end-to-end encrypted with your master password — the storage only sees ciphertext. Works offline and merges automatically. A built-in AI assistant with your own API turns tasks into commands on the remote host — and every command asks for your approval first.
 
 Runs on Windows, macOS and Linux. The interface is available in Simplified Chinese and English; it starts in Chinese — switch it under **设置 → 通用 → 语言** (Settings → General → Language).
 
@@ -24,6 +24,7 @@ Runs on Windows, macOS and Linux. The interface is available in Simplified Chine
 | Keychain | Generate Ed25519 / RSA / ECDSA keys, import key files or paste keys, view public keys and fingerprints, export a public key to a host's `authorized_keys` in one click, identities (reusable username + password / key), keys can be marked "Device only" so they are never synced |
 | Port forwarding | Local, remote and dynamic forwarding (built-in SOCKS5); rule management, start / stop, auto-start, status and connection counts |
 | Snippets | Snippet library (shell-highlighting editor, tags), run in the current terminal, run on several hosts at once, quick insert from the terminal sidebar |
+| AI assistant | Bring your own API: OpenAI, Claude, Gemini, DeepSeek, Qwen, Zhipu GLM, MiniMax, Ollama (local) or any OpenAI-compatible / Anthropic-compatible gateway; multiple named configs with one-click switching, automatic model discovery and a connection test; chat with the current SSH session from the terminal sidebar — commands run through a separate exec channel with stdout / stderr / exit codes returned, and TTY-only situations (sudo, editors) ask to type into your terminal; every command asks for approval by default (per-chat or global auto mode available), API keys are encrypted with the OS keychain, requests go straight to the provider |
 | Known hosts / Logs | Host key management (import from `~/.ssh/known_hosts`, synced between devices), connection history |
 | Settings | Chinese and English UI (Chinese by default), dark / light / system theme, terminal appearance, customizable shortcuts, SFTP options, app lock (on start and after idle), import & export (`~/.ssh/config`, CSV, encrypted backups) |
 | **Multi-device sync** | Your own storage: PostgreSQL (real-time push), MySQL / MariaDB, Cloudflare D1, WebDAV folder; end-to-end encrypted; works offline and merges automatically when back online; device list, master password change, vault key rotation |
@@ -45,7 +46,24 @@ Runs on Windows, macOS and Linux. The interface is available in Simplified Chine
     <td align="center"><img src="docs/screenshots/en/keychain.png" width="380" alt="Keychain"><br><sub>Keychain: generate, import, export public keys to hosts</sub></td>
     <td align="center"><img src="docs/screenshots/en/hosts-light.png" width="380" alt="Light theme"><br><sub>Light theme</sub></td>
   </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/en/ai.png" width="380" alt="AI assistant"><br><sub>AI assistant: drive the current SSH session by chat, approve every command</sub></td>
+    <td align="center"><img src="docs/screenshots/en/ai-settings.png" width="380" alt="AI settings"><br><sub>AI settings: bring your own API, multiple named configs</sub></td>
+  </tr>
 </table>
+
+---
+
+## AI assistant
+
+Click the robot icon in the terminal toolbar (or search "AI" in the command palette) to open the chat panel next to your terminal. It binds to the current SSH session: describe a task and the AI plans and runs the commands, then reports back.
+
+- **Bring your own API**: configure your provider under Settings → AI Assistant — OpenAI, Claude, Gemini, DeepSeek, Qwen, Zhipu GLM, MiniMax, Ollama (local), or any OpenAI-compatible / Anthropic-compatible gateway (a bare domain gets `/v1` appended automatically). Keep multiple named configs, discover models automatically and test the connection in one click.
+- **Two execution modes**: commands normally run through a separate exec channel on the remote host (`run_command`) with stdout / stderr / exit code returned — your interactive terminal is untouched. For TTY-only situations (sudo password prompts, vim, interactive wizards) the AI can ask to type into your terminal (`send_keys`).
+- **Every command asks first**: each command shows an approve / decline prompt (no answer within 5 minutes counts as declined). "Auto-run for this chat" and a global auto mode are available; max turns and command timeout are configurable as a runaway guard.
+- **Privacy**: API keys are encrypted with the OS keychain and never leave your device unencrypted; AI requests go straight from the app to the provider URL you configured. AI configs are device-local and are not part of multi-device sync.
+
+> Note: agent mode requires a model with function-calling support. Some reverse-proxy models on gateways don't support it — the symptom is the AI replying with text but never running commands. Switch to a model that does (official `gpt-4o`, `deepseek-chat`, `claude-sonnet-4-5`, …).
 
 ---
 

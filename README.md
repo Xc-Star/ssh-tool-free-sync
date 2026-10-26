@@ -2,7 +2,7 @@
 
 **简体中文** | [English](README.en.md)
 
-> 跨平台 SSH 客户端，功能对标 Termius。同步不收费、不经过官方服务器：数据存进你自己的 PostgreSQL、MySQL / MariaDB、Cloudflare D1 或任意 WebDAV 目录，主密码端到端加密，存储端只有密文。支持离线使用与自动合并。
+> 跨平台 SSH 客户端，功能对标 Termius。同步不收费、不经过官方服务器：数据存进你自己的 PostgreSQL、MySQL / MariaDB、Cloudflare D1 或任意 WebDAV 目录，主密码端到端加密，存储端只有密文。支持离线使用与自动合并。内置自带 API 的 AI 助手：描述任务，AI 直接在远程主机上执行命令，每条命令执行前都会请你确认。
 
 支持 Windows、macOS 与 Linux，界面提供简体中文与英文。
 
@@ -24,6 +24,7 @@
 | 密钥库 | 生成 Ed25519 / RSA / ECDSA 密钥、导入私钥文件或粘贴、查看公钥与指纹、一键把公钥导出到主机的 `authorized_keys`、身份（可复用的用户名+密码/密钥）、密钥可设为「仅本机」不同步 |
 | 端口转发 | 本地转发、远程转发、动态转发（内置 SOCKS5），规则管理、启动/停止、自动启动、状态与连接数 |
 | 代码片段 | 片段管理（Shell 高亮编辑器、标签）、在当前终端运行、一键在多台主机上运行、终端侧边栏快速插入 |
+| AI 助手 | 自带 API：OpenAI、Claude、Gemini、DeepSeek、通义千问、智谱 GLM、MiniMax、Ollama（本地）及任意 OpenAI 兼容 / Anthropic 兼容网关，多套命名配置一键切换，模型列表自动发现、一键测试连接；在终端侧边栏对话操控当前 SSH 会话，独立通道执行命令并回传输出与退出码，sudo 等 TTY 场景可请求向终端输入；每条命令默认需确认（可按会话或全局自动执行），API Key 系统钥匙串加密，请求由应用直连服务商 |
 | 已知主机 / 日志 | 主机指纹管理（可从 `~/.ssh/known_hosts` 导入，并在设备间同步）、连接历史 |
 | 设置 | 中英文界面（默认中文）、深色/浅色/跟随系统、终端外观、可自定义快捷键、SFTP 选项、应用锁（启动/闲置自动锁定）、导入导出（`~/.ssh/config`、CSV、加密备份） |
 | **多设备同步** | 自建存储：PostgreSQL（实时推送）、MySQL / MariaDB、Cloudflare D1、WebDAV 目录；端到端加密；离线可用、恢复联网后自动合并；设备列表、修改主密码、轮换密钥 |
@@ -45,7 +46,24 @@
     <td align="center"><img src="docs/screenshots/zh-CN/keychain.png" width="380" alt="密钥库"><br><sub>密钥库：生成、导入、导出公钥到主机</sub></td>
     <td align="center"><img src="docs/screenshots/zh-CN/hosts-light.png" width="380" alt="浅色主题"><br><sub>浅色主题</sub></td>
   </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/zh-CN/ai.png" width="380" alt="AI 助手"><br><sub>AI 助手：对话操控当前 SSH 会话，命令执行前需确认</sub></td>
+    <td align="center"><img src="docs/screenshots/zh-CN/ai-settings.png" width="380" alt="AI 设置"><br><sub>AI 设置：自带 API，多套命名配置</sub></td>
+  </tr>
 </table>
+
+---
+
+## AI 助手
+
+在终端工具栏点机器人图标（或命令面板搜「AI 助手」）打开右侧对话面板，AI 绑定当前 SSH 会话：描述任务，它自己规划并执行命令，完成后汇报结果。
+
+- **自带 API**：在「设置 → AI 助手」配置你自己的服务商——OpenAI、Claude、Gemini、DeepSeek、通义千问、智谱 GLM、MiniMax、Ollama（本地），或任意 OpenAI 兼容 / Anthropic 兼容网关（裸域名自动补全 `/v1`）。可保存多套命名配置一键切换，模型列表自动发现，一键测试连接。
+- **两种执行方式**：命令默认通过独立通道在远程主机上执行（`run_command`），精确回传 stdout / stderr / 退出码，不打扰你正在使用的交互终端；sudo 密码、vim 等只有 TTY 才能处理的场景，AI 会请求向你的终端直接输入（`send_keys`）。
+- **每条命令都经你确认**：执行前弹出「批准 / 拒绝」，5 分钟未响应视为拒绝；也可选择「本次会话自动」或在设置中开启全局自动执行。最大轮次与命令超时可配置，防止失控循环。
+- **隐私**：API Key 用系统钥匙串加密后只存本设备；AI 请求由应用直连你配置的服务商地址，不经过任何第三方中转。同步数据（主机、密钥等）与 AI 配置相互独立，AI 配置不参与多设备同步。
+
+> 注意：Agent 模式需要模型支持工具调用（function calling）。部分网关的逆向代理模型不支持，表现为 AI 只回复文字、不执行命令——换一个支持的模型即可（如官方 `gpt-4o`、`deepseek-chat`、`claude-sonnet-4-5` 等）。
 
 ---
 

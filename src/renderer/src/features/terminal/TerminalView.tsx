@@ -75,7 +75,7 @@ export function TerminalView({ tab, visible }: { tab: TerminalTab; visible: bool
             <ToolbarButton tip={t('snippets')} active={snippetsOpen} onClick={() => useTerminalUi.setState((s) => ({ snippetsOpen: !s.snippetsOpen }))}>
               <Braces />
             </ToolbarButton>
-            <ToolbarButton tip={t('aiAssistant')} active={aiOpen} onClick={() => useTerminalUi.setState((s) => ({ aiOpen: !s.aiOpen }))}>
+            <ToolbarButton tip={t('aiAssistant')} active={aiOpen} testId="ai-panel-toggle" onClick={() => useTerminalUi.setState((s) => ({ aiOpen: !s.aiOpen }))}>
               <Bot />
             </ToolbarButton>
             <ToolbarButton tip={t('splitRight')} onClick={() => activeLeaf && void splitPane(tab.id, activeLeaf.id, 'horizontal')}>
@@ -98,11 +98,24 @@ export function TerminalView({ tab, visible }: { tab: TerminalTab; visible: bool
   )
 }
 
-function ToolbarButton({ tip, onClick, children, active }: { tip: string; onClick: () => void; children: React.ReactNode; active?: boolean }): React.JSX.Element {
+function ToolbarButton({
+  tip,
+  onClick,
+  children,
+  active,
+  testId
+}: {
+  tip: string
+  onClick: () => void
+  children: React.ReactNode
+  active?: boolean
+  testId?: string
+}): React.JSX.Element {
   return (
     <Tip content={tip}>
       <button
         onClick={onClick}
+        data-testid={testId}
         className={cn(
           'flex size-7 items-center justify-center rounded-md border border-line bg-elevated/90 text-muted shadow-sm backdrop-blur hover:text-fg [&_svg]:size-3.5',
           active && 'text-accent'

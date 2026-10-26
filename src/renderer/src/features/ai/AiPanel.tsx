@@ -82,7 +82,7 @@ export function AiPanel({ sessionId, onClose }: { sessionId?: string; onClose: (
             </span>
           </Tip>
           <Tip content={t('newChat')}>
-            <Button size="icon-xs" variant="ghost" onClick={() => useAi.getState().newConversation(sessionId)}>
+            <Button size="icon-xs" variant="ghost" onClick={() => useAi.getState().newConversation(sessionId)} data-testid="ai-new-chat">
               <MessageSquarePlus />
             </Button>
           </Tip>

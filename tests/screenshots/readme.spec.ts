@@ -5,6 +5,7 @@ import path from 'node:path'
 import { expect, type Page, test } from '@playwright/test'
 import type { ForwardState, TransferInfo } from '../../src/shared/types'
 import { launchApp, removeProfile, type Running, rpc, terminalText } from '../e2e/app'
+import { type AiMock, AI_FAKE_COMMANDS, startAiMock } from '../helpers/ai-mock-server'
 import { type D1Mock, startD1Mock } from '../helpers/d1-mock-server'
 import { startTestSshServer, type TestSshServer } from '../helpers/ssh-test-server'
 
@@ -23,6 +24,7 @@ const PASSWORD = 'readme-demo'
 const running: Running[] = []
 let server: TestSshServer | undefined
 let mock: D1Mock | undefined
+let aiMock: AiMock | undefined
 let work: string | undefined
 let drive: string | undefined
 
@@ -30,6 +32,7 @@ test.afterAll(async () => {
   for (const r of running) await r.close()
   await server?.close()
   await mock?.close()
+  await aiMock?.close()
   if (drive) spawnSync('subst', [`${drive}:`, '/d'], { stdio: 'ignore' })
   if (work) removeProfile(work)
 })
@@ -274,7 +277,19 @@ test('README screenshots', async () => {
   drive = mapDrive(localRoot)
   const localProject = drive ? `${drive}:\\projects\\website` : path.join(localRoot, 'projects', 'website')
 
-  server = await startTestSshServer({ users: { deploy: { password: PASSWORD } }, rootDir: remoteRoot })
+  server = await startTestSshServer({
+    users: { deploy: { password: PASSWORD } },
+    rootDir: remoteRoot,
+    // The AI assistant's scripted commands (see the ai.png step): fake system stats.
+    execHandler: (command, channel) => {
+      const output = AI_FAKE_COMMANDS[command]
+      if (output === undefined) return
+      channel.write(output)
+      channel.exit(0)
+      channel.end()
+      return true
+    }
+  })
   mock = await startD1Mock({
     accountId: '9f3b8c2e4a1d47e6b0c5f2a8d3e1b7c4',
     databaseId: 'c2a7e5d1-8f34-4b6a-9e1c-3d5f7a9b2e40',
@@ -307,6 +322,47 @@ test('README screenshots', async () => {
   await win.locator('[data-testid=terminal-tab]').first().click()
   await pane(win, left).click()
   await capture(a, 'terminal')
+
+  // AI assistant: a scripted local provider plans two commands on the live session. The shot
+  // shows the finished first command (with output) plus the approval prompt for the second.
+  aiMock = await startAiMock()
+  const aiCfg = await rpc<{ id: string }>(win, 'ai.saveConfig', {
+    name: 'OpenAI 兼容',
+    preset: 'openai-compatible',
+    protocol: 'openai',
+    baseUrl: aiMock.baseUrl,
+    model: 'gpt-4o',
+    apiKey: 'readme-demo',
+    authStyle: 'bearer'
+  })
+  await rpc(win, 'settings.set', { ai: { activeConfigId: aiCfg.id } })
+  const aiToggle = win.locator('[data-testid=terminal-view]:not(.invisible) [data-testid=ai-panel-toggle]')
+  await aiToggle.click()
+  const cards = win.locator('[data-testid=ai-command-card]')
+  for (const lang of LANGS) {
+    await rpc(win, 'settings.set', { language: lang })
+    if (lang !== 'zh-CN') await win.click('[data-testid=ai-new-chat]')
+    await win.waitForTimeout(400)
+    await win.fill('[data-testid=ai-input]', lang === 'zh-CN' ? '帮我检查这台服务器的磁盘和内存' : 'Check this server disk and memory usage')
+    await win.keyboard.press('Enter')
+    await cards.first().locator('[data-testid=ai-approve]').waitFor()
+    await expect(cards.first()).toContainText('df -h /')
+    await cards.first().locator('[data-testid=ai-approve]').click()
+    await expect(cards).toHaveCount(2)
+    await cards.nth(1).locator('[data-testid=ai-approve]').waitFor()
+    // The executed first command shows its (fake) output; the second waits for approval.
+    await expect(cards.first()).toContainText('/dev/vda1')
+    await expect(cards.nth(1)).toContainText('free -m')
+    await win.mouse.move(SIZE.width - 4, SIZE.height - 4)
+    await win.waitForTimeout(800)
+    await a.win.screenshot({ path: path.join(OUT, lang, 'ai.png') })
+    // Finish the run (approve the second command) so no confirm is left hanging.
+    await cards.nth(1).locator('[data-testid=ai-approve]').click()
+    await win.locator('[data-testid=ai-send]').waitFor()
+    await win.waitForTimeout(400)
+  }
+  await rpc(win, 'settings.set', { language: 'zh-CN' })
+  await aiToggle.click()
 
   // SFTP: local project on the left, the server on the right, after uploading the build output.
   await win.click('[data-testid=tab-vault]')
@@ -373,6 +429,29 @@ test('README screenshots', async () => {
   await win.click('[data-testid=sync-devices-refresh]')
   await expect(win.locator('[data-testid=sync-device]')).toHaveCount(2)
   await capture(a, 'sync')
+
+  // AI settings: show the named-config list with two providers (the demo localhost config is removed).
+  await win.click('[data-testid=settings-nav-ai]')
+  const deepseek = await rpc<{ id: string }>(win, 'ai.saveConfig', {
+    name: 'DeepSeek',
+    preset: 'deepseek',
+    protocol: 'openai',
+    baseUrl: 'https://api.deepseek.com',
+    model: 'deepseek-chat',
+    apiKey: 'readme-demo'
+  })
+  await rpc(win, 'ai.saveConfig', {
+    name: 'Claude',
+    preset: 'claude',
+    protocol: 'anthropic',
+    baseUrl: 'https://api.anthropic.com',
+    model: 'claude-sonnet-4-5',
+    apiKey: 'readme-demo'
+  })
+  await rpc(win, 'ai.removeConfig', aiCfg.id)
+  await rpc(win, 'settings.set', { ai: { activeConfigId: deepseek.id } })
+  await win.waitForSelector('[data-testid=ai-config-list]')
+  await capture(a, 'ai-settings')
 
   await rpc(win, 'settings.set', { theme: 'light' })
   await win.click('[data-testid=nav-hosts]')
