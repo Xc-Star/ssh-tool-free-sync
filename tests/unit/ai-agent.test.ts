@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { AI_DECLINED_RESULT } from '@shared/ai'
-import { AiService, type AiServiceDeps } from '../../src/main/ai/agent'
+import type { AiMessage } from '@shared/ai'
+import { AiService, withClearedToolResults, type AiServiceDeps } from '../../src/main/ai/agent'
 import { AiConfigStore } from '../../src/main/ai/config-store'
 import type { FetchImpl } from '../../src/main/ai/providers'
 import { MemoryEmitter } from '../../src/main/services/emitter'
@@ -43,6 +43,18 @@ const openAiToolCall = (id: string, name: string, args: unknown): Response =>
     'data: [DONE]\n\n'
   )
 
+const data = (payload: unknown): string => `data: ${JSON.stringify(payload)}\n\n`
+
+const openAiCommands = (commands: string[]): Response =>
+  sse(
+    data({
+      choices: [{ delta: { tool_calls: commands.map((command, index) => ({ index, id: `c${index}`, function: { name: 'run_command', arguments: JSON.stringify({ command }) } })) } }]
+    }),
+    'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n\n'
+  )
+
+const SOURCE = 'openai|https://api.test/v1|m1'
+
 interface Fixture {
   svc: AiService
   emitter: MemoryEmitter
@@ -60,12 +72,13 @@ function makeFixture(opts: {
   hostId?: string
   kind?: string
   withConfig?: boolean
+  protocol?: 'openai' | 'anthropic'
 }): Fixture {
   const emitter = new MemoryEmitter()
   const db = new LocalDb(':memory:')
   const store = new AiConfigStore(db, protector)
   if (opts.withConfig !== false) {
-    store.save({ name: 't', preset: 'custom', protocol: 'openai', baseUrl: 'https://api.test/v1', model: 'm1', apiKey: 'k', authStyle: 'none' })
+    store.save({ name: 't', preset: 'custom', protocol: opts.protocol ?? 'openai', baseUrl: 'https://api.test/v1', model: 'm1', apiKey: 'k', authStyle: 'none' })
   }
   const settings: LocalSettings = { ...DEFAULT_SETTINGS, ai: { ...DEFAULT_SETTINGS.ai, ...opts.ai } }
   const exec = vi.fn(async () => ({ code: 0, stdout: 'total 0\n', stderr: '' }))
@@ -105,6 +118,13 @@ async function until(cond: () => boolean, what: string): Promise<void> {
 
 const doneEvents = (f: Fixture) => f.emitter.events.filter((e) => e.event === 'ai.done')
 const eventsOf = <P = any>(f: Fixture, name: string): P[] => f.emitter.events.filter((e) => e.event === name).map((e) => e.payload as P)
+const requestBody = (f: Fixture, n: number): any => JSON.parse(String(f.fetchImpl.mock.calls[n][1].body))
+
+interface ToolResultEvent {
+  callId: string
+  status: string
+  result: string
+}
 
 function chat(f: Fixture): void {
   f.svc.chat({ conversationId: 'conv1', sessionId: 's1', messages: [{ role: 'user', content: 'list files' }] })
@@ -126,8 +146,8 @@ describe('AiService agent loop', () => {
     await until(() => doneEvents(f).length === 1, 'done event')
 
     expect(f.exec).toHaveBeenCalledWith('ls', expect.objectContaining({ timeoutMs: 120_000 }))
-    const toolResult = eventsOf<{ callId: string; ok: boolean; result: string }>(f, 'ai.toolResult')[0]
-    expect(toolResult.ok).toBe(true)
+    const toolResult = eventsOf<ToolResultEvent>(f, 'ai.toolResult')[0]
+    expect(toolResult.status).toBe('ok')
     expect(toolResult.result).toContain('exit code: 0')
     expect(toolResult.result).toContain('total 0')
     expect(eventsOf(f, 'ai.delta').map((d) => (d as { text: string }).text).join('')).toBe('All good')
@@ -150,9 +170,9 @@ describe('AiService agent loop', () => {
     f.svc.resolveConfirm((eventsOf<{ confirmId: string }>(f, 'ai.confirm')[0]).confirmId, false)
     await until(() => doneEvents(f).length === 1, 'done event')
     expect(f.exec).not.toHaveBeenCalled()
-    const toolResult = eventsOf<{ ok: boolean; result: string }>(f, 'ai.toolResult')[0]
-    expect(toolResult.ok).toBe(false)
-    expect(toolResult.result).toBe(AI_DECLINED_RESULT)
+    const toolResult = eventsOf<ToolResultEvent>(f, 'ai.toolResult')[0]
+    expect(toolResult.status).toBe('declined')
+    expect(toolResult.result).toContain('DECLINED')
   })
 
   it('skips confirmation in auto-approve mode, but send_keys still requires it', async () => {
@@ -191,7 +211,7 @@ describe('AiService agent loop', () => {
     expect(doneEvents(f)[0]).toEqual({ event: 'ai.done', payload: { conversationId: 'conv1', reason: 'maxTurns' } })
   })
 
-  it('aborts a running conversation', async () => {
+  it('aborts a conversation waiting for approval and closes the pending call', async () => {
     const f = makeFixture({ responses: [openAiToolCall('c1', 'run_command', { command: 'ls' })] })
     chat(f)
     await until(() => eventsOf(f, 'ai.confirm').length === 1, 'confirm event')
@@ -199,6 +219,144 @@ describe('AiService agent loop', () => {
     await until(() => doneEvents(f).length === 1, 'done event')
     expect(doneEvents(f)[0]).toEqual({ event: 'ai.done', payload: { conversationId: 'conv1', reason: 'aborted' } })
     expect(f.exec).not.toHaveBeenCalled()
+    expect(eventsOf<ToolResultEvent>(f, 'ai.toolResult')).toEqual([expect.objectContaining({ status: 'aborted', result: expect.stringContaining('not executed') })])
+  })
+
+  it('cancels a running command on abort and reports that it may have partially run', async () => {
+    const f = makeFixture({ responses: [openAiToolCall('c1', 'run_command', { command: 'sleep 100' })], ai: { autoApprove: true } })
+    let execSignal: AbortSignal | undefined
+    f.exec.mockImplementation((_command: string, opts: { signal: AbortSignal }) => {
+      execSignal = opts.signal
+      return new Promise((_resolve, reject) => opts.signal.addEventListener('abort', () => reject(new Error('Command aborted'))))
+    })
+    chat(f)
+    await until(() => execSignal !== undefined, 'command start')
+    f.svc.abort('conv1')
+    await until(() => doneEvents(f).length === 1, 'done event')
+    expect(execSignal?.aborted).toBe(true)
+    expect(eventsOf<ToolResultEvent>(f, 'ai.toolResult')).toEqual([
+      expect.objectContaining({ status: 'aborted', result: expect.stringContaining('may have partially completed') })
+    ])
+    expect(doneEvents(f)[0].payload).toEqual({ conversationId: 'conv1', reason: 'aborted' })
+  })
+
+  it('marks a non-zero exit as failed but still gives the model the output', async () => {
+    const f = makeFixture({ responses: [openAiToolCall('c1', 'run_command', { command: 'false' }), openAiText('it failed')], ai: { autoApprove: true } })
+    f.exec.mockResolvedValue({ code: 1, stdout: '', stderr: 'boom' })
+    chat(f)
+    await until(() => doneEvents(f).length === 1, 'done event')
+    const toolResult = eventsOf<ToolResultEvent>(f, 'ai.toolResult')[0]
+    expect(toolResult.status).toBe('error')
+    expect(toolResult.result).toContain('exit code: 1')
+    expect(toolResult.result).toContain('boom')
+  })
+
+  it('never runs tool calls from a stream that was cut off', async () => {
+    const cut = sse(data({ choices: [{ delta: { tool_calls: [{ index: 0, id: 'c1', function: { name: 'run_command', arguments: '{"command":"ls"}' } }] } }] }))
+    const f = makeFixture({ responses: [cut], ai: { autoApprove: true } })
+    chat(f)
+    await until(() => doneEvents(f).length === 1, 'done event')
+    expect(f.exec).not.toHaveBeenCalled()
+    expect(eventsOf(f, 'ai.toolCall')).toHaveLength(0)
+    expect(doneEvents(f)[0].payload).toEqual(expect.objectContaining({ reason: 'error', error: expect.stringContaining('before the response was complete') }))
+  })
+
+  it('rejects malformed arguments without asking for approval or executing', async () => {
+    const truncated = sse(
+      data({ choices: [{ delta: { tool_calls: [{ index: 0, id: 'c1', function: { name: 'run_command', arguments: '{"command": "rm -rf' } }] } }] }),
+      'data: {"choices":[{"delta":{},"finish_reason":"length"}]}\n\n'
+    )
+    const f = makeFixture({ responses: [truncated, openAiText('retrying')] })
+    chat(f)
+    await until(() => doneEvents(f).length === 1, 'done event')
+    expect(eventsOf(f, 'ai.confirm')).toHaveLength(0)
+    expect(f.exec).not.toHaveBeenCalled()
+    expect(eventsOf<ToolResultEvent>(f, 'ai.toolResult')).toEqual([expect.objectContaining({ status: 'error', result: expect.stringContaining('not valid JSON') })])
+  })
+
+  it('streams reasoning and replays it, with tool-call signatures, only to the provider that produced it', async () => {
+    const thinkingCall = sse(
+      data({ choices: [{ delta: { reasoning_content: 'Need the file list.' } }] }),
+      data({
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                { index: 0, id: 'c1', function: { name: 'run_command', arguments: '{"command":"ls"}' }, extra_content: { google: { thought_signature: 'sig-1' } } }
+              ]
+            }
+          }
+        ]
+      }),
+      'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n\n'
+    )
+    const f = makeFixture({ responses: [thinkingCall, openAiText('done')], ai: { autoApprove: true } })
+    f.svc.chat({
+      conversationId: 'conv1',
+      sessionId: 's1',
+      messages: [
+        { role: 'user', content: 'q1' },
+        { role: 'assistant', content: 'a1', reasoning: { content: 'r1', source: SOURCE } },
+        { role: 'user', content: 'q2' },
+        { role: 'assistant', content: 'a2', reasoning: { content: 'foreign', source: 'openai|https://other.test/v1|m9' } },
+        { role: 'user', content: 'list files' }
+      ]
+    })
+    await until(() => doneEvents(f).length === 1, 'done event')
+
+    expect(eventsOf(f, 'ai.reasoning')).toEqual([{ conversationId: 'conv1', text: 'Need the file list.', source: SOURCE }])
+    const first = requestBody(f, 0)
+    expect(first.messages[2]).toEqual({ role: 'assistant', content: 'a1', reasoning_content: 'r1' })
+    expect(first.messages[4]).toEqual({ role: 'assistant', content: 'a2' })
+    expect(requestBody(f, 1).messages[6]).toEqual({
+      role: 'assistant',
+      content: null,
+      reasoning_content: 'Need the file list.',
+      tool_calls: [
+        { id: 'c1', type: 'function', function: { name: 'run_command', arguments: '{"command":"ls"}' }, extra_content: { google: { thought_signature: 'sig-1' } } }
+      ]
+    })
+  })
+
+  it('clears the oldest tool output in later requests once the context budget is exceeded', async () => {
+    const f = makeFixture({ responses: [openAiCommands(['cat a', 'cat b', 'cat c', 'cat d', 'cat e']), openAiText('done')], ai: { autoApprove: true } })
+    f.exec.mockResolvedValue({ code: 0, stdout: 'y'.repeat(40_000), stderr: '' })
+    chat(f)
+    await until(() => doneEvents(f).length === 1, 'done event')
+    const results = requestBody(f, 1).messages.filter((m: any) => m.role === 'tool')
+    expect(results.map((m: any) => m.content.includes('Output cleared'))).toEqual([true, true, false, false, false])
+    // The UI still shows every full result.
+    expect(eventsOf<ToolResultEvent>(f, 'ai.toolResult').every((r) => !r.result.includes('Output cleared'))).toBe(true)
+  })
+
+  it('keeps history around signed thinking byte-identical within a run', async () => {
+    const toolUses = ['cat a', 'cat b', 'cat c', 'cat d', 'cat e'].map((command, i) => [
+      data({ type: 'content_block_start', index: i + 1, content_block: { type: 'tool_use', id: `tu${i}`, name: 'run_command', input: {} } }),
+      data({ type: 'content_block_delta', index: i + 1, delta: { type: 'input_json_delta', partial_json: JSON.stringify({ command }) } })
+    ])
+    const signed = sse(
+      data({ type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '', signature: '' } }),
+      data({ type: 'content_block_delta', index: 0, delta: { type: 'signature_delta', signature: 'sig' } }),
+      ...toolUses.flat(),
+      data({ type: 'message_delta', delta: { stop_reason: 'tool_use' } })
+    )
+    const f = makeFixture({ protocol: 'anthropic', responses: [signed, sse(data({ type: 'message_stop' }))], ai: { autoApprove: true } })
+    f.exec.mockResolvedValue({ code: 0, stdout: 'y'.repeat(40_000), stderr: '' })
+    chat(f)
+    await until(() => doneEvents(f).length === 1, 'done event')
+    const second = requestBody(f, 1)
+    expect(second.messages[1].content[0]).toEqual({ type: 'thinking', thinking: '', signature: 'sig' })
+    const results = second.messages[2].content
+    expect(results).toHaveLength(5)
+    expect(results.some((r: any) => r.content.includes('Output cleared'))).toBe(false)
+    expect(results[4].cache_control).toEqual({ type: 'ephemeral' })
+  })
+
+  it('tells the model when commands run without review', async () => {
+    const f = makeFixture({ responses: [openAiText('hi')], ai: { autoApprove: true } })
+    chat(f)
+    await until(() => doneEvents(f).length === 1, 'done event')
+    expect(requestBody(f, 0).messages[0].content).toContain('without the user reviewing them')
   })
 
   it('truncates huge command output from the middle', async () => {
@@ -234,8 +392,8 @@ describe('AiService agent loop', () => {
     f.exec.mockRejectedValue(new Error('Command timed out'))
     chat(f)
     await until(() => doneEvents(f).length === 1, 'done event')
-    const toolResult = eventsOf<{ ok: boolean; result: string }>(f, 'ai.toolResult')[0]
-    expect(toolResult.ok).toBe(false)
+    const toolResult = eventsOf<ToolResultEvent>(f, 'ai.toolResult')[0]
+    expect(toolResult.status).toBe('error')
     expect(toolResult.result).toBe('Error: Command timed out')
     expect(doneEvents(f)[0]).toEqual({ event: 'ai.done', payload: { conversationId: 'conv1', reason: 'stop' } })
   })
@@ -249,5 +407,20 @@ describe('AiService agent loop', () => {
   it('rejects non-ssh sessions', () => {
     const f = makeFixture({ responses: [], kind: 'local' })
     expect(() => f.svc.chat({ conversationId: 'a', sessionId: 's1', messages: [] })).toThrow('only works on SSH sessions')
+  })
+})
+
+describe('withClearedToolResults', () => {
+  const tool = (id: string, size: number): AiMessage => ({ role: 'tool', toolCallId: id, name: 'run_command', content: `exit code: 0\n${'x'.repeat(size)}` })
+
+  it('clears the oldest output down to half the budget and keeps earlier prompts stable as history grows', () => {
+    const history: AiMessage[] = [{ role: 'user', content: 'go' }, tool('a', 400), tool('b', 400), tool('c', 400)]
+    const view = withClearedToolResults(history, 1000, 1)
+    expect(view.map((m) => m.content.includes('Output cleared'))).toEqual([false, true, true, false])
+    expect(view[1].content.startsWith('exit code: 0\n')).toBe(true)
+    expect(history[1].content).not.toContain('Output cleared')
+
+    expect(withClearedToolResults([...history, tool('d', 100)], 1000, 1).slice(0, 4)).toEqual(view)
+    expect(withClearedToolResults(history.slice(0, 3), 1000, 1)).toEqual(history.slice(0, 3))
   })
 })

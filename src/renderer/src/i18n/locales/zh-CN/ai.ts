@@ -25,6 +25,8 @@ export default {
   statusDone: '已完成',
   statusDeclined: '已拒绝',
   statusError: '执行出错',
+  statusAborted: '已中止',
+  reasoning: '思考过程',
   copy: '复制',
   maxTurns: '已达到最大轮次。可以发送"继续"让 AI 接着处理。',
   aborted: '已停止',

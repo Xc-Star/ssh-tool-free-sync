@@ -106,6 +106,13 @@ describe('OpenAI adapter', () => {
     ).rejects.toThrow(/check the API key/)
   })
 
+  it('treats a stream without finish_reason or [DONE] as incomplete', async () => {
+    const { impl } = scriptedFetch([sseResponse('data: {"choices":[{"delta":{"content":"partial"}}]}\n\n')])
+    await expect(
+      createAdapter('openai', impl).chat({ config: config(), messages: [{ role: 'user', content: 'x' }], tools: [], onDelta: () => {} })
+    ).rejects.toThrow(/before the response was complete/)
+  })
+
   it('retries a 500 once and then succeeds', async () => {
     let n = 0
     const impl: FetchImpl = async () => {
@@ -202,10 +209,54 @@ describe('Anthropic adapter', () => {
         role: 'user',
         content: [
           { type: 'tool_result', tool_use_id: 'c1', content: 'r1' },
-          { type: 'tool_result', tool_use_id: 'c2', content: 'r2' }
+          { type: 'tool_result', tool_use_id: 'c2', content: 'r2', cache_control: { type: 'ephemeral' } }
         ]
       }
     ])
+  })
+
+  it('returns signed thinking verbatim and sends it back unchanged', async () => {
+    const anthropic = config({ protocol: 'anthropic' })
+    const { impl, calls } = scriptedFetch([
+      sseResponse(
+        'data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}}\n\n',
+        'data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Check disk."}}\n\n',
+        'data: {"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"sig"}}\n\n',
+        'data: {"type":"content_block_start","index":1,"content_block":{"type":"redacted_thinking","data":"opaque"}}\n\n',
+        'data: {"type":"content_block_start","index":2,"content_block":{"type":"tool_use","id":"tu_1","name":"run_command","input":{}}}\n\n',
+        'data: {"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":"{\\"command\\":\\"df -h\\"}"}}\n\n',
+        'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"}}\n\n'
+      ),
+      sseResponse('data: {"type":"message_stop"}\n\n')
+    ])
+    const reasoning: string[] = []
+    const adapter = createAdapter('anthropic', impl)
+    const res = await adapter.chat({ config: anthropic, messages: [{ role: 'user', content: 'go' }], tools: TOOLS, onDelta: () => {}, onReasoning: (t) => reasoning.push(t) })
+    expect(reasoning).toEqual(['Check disk.'])
+    expect(res.rawContent).toEqual([
+      { type: 'thinking', thinking: 'Check disk.', signature: 'sig' },
+      { type: 'redacted_thinking', data: 'opaque' },
+      { type: 'tool_use', id: 'tu_1', name: 'run_command', input: { command: 'df -h' } }
+    ])
+
+    await adapter.chat({
+      config: anthropic,
+      tools: TOOLS,
+      onDelta: () => {},
+      messages: [
+        { role: 'user', content: 'go' },
+        { role: 'assistant', content: res.text, toolCalls: res.toolCalls, rawContent: res.rawContent },
+        { role: 'tool', toolCallId: 'tu_1', name: 'run_command', content: 'ok' }
+      ]
+    })
+    expect(calls[1].body.messages[1]).toEqual({ role: 'assistant', content: res.rawContent })
+  })
+
+  it('treats a stream without message_stop or a stop reason as incomplete', async () => {
+    const { impl } = scriptedFetch([sseResponse('data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"partial"}}\n\n')])
+    await expect(
+      createAdapter('anthropic', impl).chat({ config: config({ protocol: 'anthropic' }), messages: [{ role: 'user', content: 'x' }], tools: [], onDelta: () => {} })
+    ).rejects.toThrow(/before the response was complete/)
   })
 })
 

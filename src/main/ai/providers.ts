@@ -15,11 +15,17 @@ export interface ChatOptions {
   signal?: AbortSignal
   /** Streamed assistant text. */
   onDelta: (text: string) => void
+  /** Streamed model reasoning. */
+  onReasoning?: (text: string) => void
 }
 
 export interface ChatResult {
   text: string
   toolCalls: AiToolCall[]
+  /** OpenAI-compatible `reasoning_content` to send back with this turn. */
+  reasoning?: string
+  /** Anthropic content as returned, set when it carries signed thinking. */
+  rawContent?: Record<string, unknown>[]
 }
 
 export interface ProviderAdapter {
@@ -109,7 +115,7 @@ async function postStream(fetchImpl: FetchImpl, url: string, headers: Record<str
   throw lastErr
 }
 
-/** Parses a `text/event-stream` body and hands every `data:` payload to `onData`. */
+/** Parses a `text/event-stream` body and hands every `data:` payload (including `[DONE]`) to `onData`. */
 async function readSse(res: Response, onData: (payload: string) => void): Promise<void> {
   if (!res.body) throw new AiProviderError('Empty response body')
   const reader = res.body.getReader()
@@ -125,14 +131,14 @@ async function readSse(res: Response, onData: (payload: string) => void): Promis
       buf = buf.slice(nl + 1)
       if (line.startsWith('data:')) {
         const payload = line.slice(5).trim()
-        if (payload && payload !== '[DONE]') onData(payload)
+        if (payload) onData(payload)
       }
     }
   }
   const tail = buf.trim()
   if (tail.startsWith('data:')) {
     const payload = tail.slice(5).trim()
-    if (payload && payload !== '[DONE]') onData(payload)
+    if (payload) onData(payload)
   }
 }
 
@@ -142,6 +148,25 @@ function parseJson(payload: string): any {
   } catch {
     return undefined
   }
+}
+
+/** Marks tool arguments that were not a JSON object, typically a response cut off mid-call. */
+export const INVALID_ARGS_KEY = '_raw'
+
+function parseToolArgs(json: string): Record<string, unknown> {
+  if (!json.trim()) return {}
+  const args = parseJson(json)
+  return args && typeof args === 'object' && !Array.isArray(args) ? args : { [INVALID_ARGS_KEY]: json }
+}
+
+/** The endpoint + model whose reasoning may be replayed to it. */
+export function reasoningSource(config: AiProviderConfig): string {
+  return `${config.protocol}|${config.baseUrl}|${config.model}`
+}
+
+/** A dropped connection can end a stream cleanly mid-response; its tool calls must never run. */
+function incompleteStream(): AiProviderError {
+  return new AiProviderError('The AI provider closed the stream before the response was complete')
 }
 
 function reqSignal(signal: AbortSignal | undefined, timeoutMs = 300_000): AbortSignal {
@@ -172,9 +197,10 @@ interface OpenAiToolCallDelta {
   index?: number
   id?: string
   function?: { name?: string; arguments?: string }
+  extra_content?: Record<string, unknown>
 }
 
-function openaiMessages(messages: AiMessage[]): any[] {
+function openaiMessages(messages: AiMessage[], source: string): any[] {
   const out: any[] = []
   for (const m of messages) {
     if (m.role === 'system') out.push({ role: 'system', content: m.content })
@@ -183,12 +209,14 @@ function openaiMessages(messages: AiMessage[]): any[] {
       out.push({
         role: 'assistant',
         content: m.content || null,
+        ...(m.reasoning?.source === source ? { reasoning_content: m.reasoning.content } : {}),
         ...(m.toolCalls?.length
           ? {
               tool_calls: m.toolCalls.map((t) => ({
                 id: t.id,
                 type: 'function',
-                function: { name: t.name, arguments: JSON.stringify(t.args) }
+                function: { name: t.name, arguments: JSON.stringify(t.args) },
+                ...(t.extra ? { extra_content: t.extra } : {})
               }))
             }
           : {})
@@ -207,7 +235,7 @@ class OpenAiAdapter implements ProviderAdapter {
     const { config, tools } = opts
     const body: Record<string, unknown> = {
       model: config.model,
-      messages: openaiMessages(opts.messages),
+      messages: openaiMessages(opts.messages, reasoningSource(config)),
       stream: true
     }
     if (tools.length) {
@@ -223,13 +251,24 @@ class OpenAiAdapter implements ProviderAdapter {
     )
 
     let text = ''
-    const calls = new Map<number, { id: string; name: string; args: string }>()
+    let reasoning = ''
+    let finished = false
+    const calls = new Map<number, { id: string; name: string; args: string; extra?: Record<string, unknown> }>()
     await readSse(res, (payload) => {
-      const j = parseJson(payload)
-      const delta = j?.choices?.[0]?.delta
+      if (payload === '[DONE]') {
+        finished = true
+        return
+      }
+      const choice = parseJson(payload)?.choices?.[0]
+      if (choice?.finish_reason) finished = true
+      const delta = choice?.delta
       if (typeof delta?.content === 'string' && delta.content) {
         text += delta.content
         opts.onDelta(delta.content)
+      }
+      if (typeof delta?.reasoning_content === 'string' && delta.reasoning_content) {
+        reasoning += delta.reasoning_content
+        opts.onReasoning?.(delta.reasoning_content)
       }
       for (const tc of (delta?.tool_calls ?? []) as OpenAiToolCallDelta[]) {
         if (tc.index === undefined) continue
@@ -237,21 +276,21 @@ class OpenAiAdapter implements ProviderAdapter {
         if (tc.id) cur.id = tc.id
         if (tc.function?.name) cur.name = tc.function.name
         if (tc.function?.arguments) cur.args += tc.function.arguments
+        if (tc.extra_content) cur.extra = tc.extra_content
         calls.set(tc.index, cur)
       }
     })
+    if (!finished) throw incompleteStream()
 
-    const toolCalls: AiToolCall[] = []
-    for (const [, c] of [...calls.entries()].sort((a, b) => a[0] - b[0])) {
-      let args: Record<string, unknown>
-      try {
-        args = c.args ? JSON.parse(c.args) : {}
-      } catch {
-        args = { _raw: c.args }
-      }
-      toolCalls.push({ id: c.id || `call_${Math.random().toString(36).slice(2)}`, name: c.name, args })
-    }
-    return { text, toolCalls }
+    const toolCalls: AiToolCall[] = [...calls.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([, c]) => ({
+        id: c.id || `call_${Math.random().toString(36).slice(2)}`,
+        name: c.name,
+        args: parseToolArgs(c.args),
+        ...(c.extra ? { extra: c.extra } : {})
+      }))
+    return { text, toolCalls, ...(reasoning ? { reasoning } : {}) }
   }
 
   async listModels(config: AiProviderConfig, signal?: AbortSignal): Promise<string[]> {
@@ -262,6 +301,12 @@ class OpenAiAdapter implements ProviderAdapter {
 }
 
 // ---------------------------------------------------------------- Anthropic Messages
+
+type AnthropicBlock =
+  | { type: 'text'; text: string }
+  | { type: 'thinking'; thinking: string; signature: string }
+  | { type: 'redacted_thinking'; data: string }
+  | { type: 'tool_use'; id: string; name: string; json: string }
 
 function anthropicMessages(messages: AiMessage[]): { system: string; messages: any[] } {
   const system: string[] = []
@@ -288,7 +333,8 @@ function anthropicMessages(messages: AiMessage[]): { system: string; messages: a
       const content: any[] = []
       if (m.content) content.push({ type: 'text', text: m.content })
       for (const t of m.toolCalls ?? []) content.push({ type: 'tool_use', id: t.id, name: t.name, input: t.args })
-      out.push({ role: 'assistant', content: content.length ? content : [{ type: 'text', text: '' }] })
+      // Signed thinking is only accepted back exactly as the API returned it.
+      out.push({ role: 'assistant', content: m.rawContent ?? (content.length ? content : [{ type: 'text', text: '' }]) })
     } else {
       // Anthropic wants tool results inside a user message; merge consecutive ones.
       pendingToolResults.push({ type: 'tool_result', tool_use_id: m.toolCallId, content: m.content })
@@ -308,6 +354,10 @@ class AnthropicAdapter implements ProviderAdapter {
   async chat(opts: ChatOptions): Promise<ChatResult> {
     const { config, tools } = opts
     const { system, messages } = anthropicMessages(opts.messages)
+    // Rolling cache breakpoint: the next agent step reads everything up to here from the prompt cache.
+    const tail = messages[messages.length - 1]
+    const last = tail?.role === 'user' ? tail.content[tail.content.length - 1] : undefined
+    if (last && (last.type === 'tool_result' || last.text)) last.cache_control = { type: 'ephemeral' }
     const body: Record<string, unknown> = {
       model: config.model,
       max_tokens: 8192,
@@ -321,43 +371,62 @@ class AnthropicAdapter implements ProviderAdapter {
     const res = await postStream(this.fetchImpl, `${config.baseUrl}/v1/messages`, this.headers(config), body, reqSignal(opts.signal))
 
     let text = ''
-    // per content-block index: accumulating tool_use block
-    const blocks = new Map<number, { id: string; name: string; json: string }>()
+    let finished = false
+    const blocks = new Map<number, AnthropicBlock>()
     await readSse(res, (payload) => {
       const j = parseJson(payload)
       switch (j?.type) {
         case 'content_block_start': {
           const b = j.content_block
-          if (b?.type === 'tool_use') blocks.set(j.index, { id: b.id, name: b.name, json: '' })
+          if (b?.type === 'text') blocks.set(j.index, { type: 'text', text: '' })
+          else if (b?.type === 'thinking') blocks.set(j.index, { type: 'thinking', thinking: b.thinking ?? '', signature: b.signature ?? '' })
+          else if (b?.type === 'redacted_thinking') blocks.set(j.index, { type: 'redacted_thinking', data: b.data })
+          else if (b?.type === 'tool_use') blocks.set(j.index, { type: 'tool_use', id: b.id, name: b.name, json: '' })
           break
         }
         case 'content_block_delta': {
           const d = j.delta
+          const b = blocks.get(j.index)
           if (d?.type === 'text_delta' && d.text) {
             text += d.text
+            if (b?.type === 'text') b.text += d.text
             opts.onDelta(d.text)
-          } else if (d?.type === 'input_json_delta' && d.partial_json) {
-            const b = blocks.get(j.index)
-            if (b) b.json += d.partial_json
+          } else if (d?.type === 'thinking_delta' && d.thinking) {
+            if (b?.type === 'thinking') b.thinking += d.thinking
+            opts.onReasoning?.(d.thinking)
+          } else if (d?.type === 'signature_delta' && b?.type === 'thinking') {
+            b.signature += d.signature ?? ''
+          } else if (d?.type === 'input_json_delta' && d.partial_json && b?.type === 'tool_use') {
+            b.json += d.partial_json
           }
           break
         }
+        case 'message_delta':
+          if (j.delta?.stop_reason) finished = true
+          break
+        case 'message_stop':
+          finished = true
+          break
         case 'error':
           throw new AiProviderError(j.error?.message || 'Anthropic stream error', undefined, payload)
       }
     })
+    if (!finished) throw incompleteStream()
 
+    const ordered = [...blocks.entries()].sort((a, b) => a[0] - b[0]).map(([, b]) => b)
     const toolCalls: AiToolCall[] = []
-    for (const [, b] of [...blocks.entries()].sort((a, b2) => a[0] - b2[0])) {
-      let args: Record<string, unknown>
-      try {
-        args = b.json ? JSON.parse(b.json) : {}
-      } catch {
-        args = { _raw: b.json }
+    const content: Record<string, unknown>[] = []
+    for (const b of ordered) {
+      if (b.type === 'tool_use') {
+        const call = { id: b.id, name: b.name, args: parseToolArgs(b.json) }
+        toolCalls.push(call)
+        content.push({ type: 'tool_use', id: call.id, name: call.name, input: call.args })
+      } else if (b.type !== 'text' || b.text) {
+        content.push(b)
       }
-      toolCalls.push({ id: b.id, name: b.name, args })
     }
-    return { text, toolCalls }
+    const signed = ordered.some((b) => b.type === 'thinking' || b.type === 'redacted_thinking')
+    return { text, toolCalls, ...(signed ? { rawContent: content } : {}) }
   }
 
   async listModels(config: AiProviderConfig, signal?: AbortSignal): Promise<string[]> {

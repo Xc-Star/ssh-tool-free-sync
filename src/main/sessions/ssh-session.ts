@@ -159,7 +159,7 @@ export class SshSession extends BaseSession {
    * (quiet-period or timeout based). Uses its own codec: the session codec is stateful and
    * already consumes every chunk for the output pump.
    */
-  async captureWrite(text: string, opts: { quietMs?: number; timeoutMs?: number; maxChars?: number } = {}): Promise<string> {
+  async captureWrite(text: string, opts: { quietMs?: number; timeoutMs?: number; maxChars?: number; signal?: AbortSignal } = {}): Promise<string> {
     const stream = this.stream
     if (!stream || this.info.status !== 'connected') throw new Error('Session is not connected')
     const quietMs = Math.max(200, opts.quietMs ?? 1500)
@@ -177,6 +177,7 @@ export class SshSession extends BaseSession {
         if (quietTimer) clearTimeout(quietTimer)
         stream.removeListener('data', onData)
         stream.removeListener('close', finish)
+        opts.signal?.removeEventListener('abort', finish)
         resolve(captured.slice(-maxChars))
       }
       const hardTimer = setTimeout(finish, timeoutMs)
@@ -191,6 +192,7 @@ export class SshSession extends BaseSession {
       }
       stream.on('data', onData)
       stream.on('close', finish)
+      opts.signal?.addEventListener('abort', finish, { once: true })
       this.write(text)
     })
   }

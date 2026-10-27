@@ -201,6 +201,21 @@ describe('ssh connections', () => {
     conn.close()
     expect(server2.authLog.some((a) => a.success)).toBe(true)
   })
+
+  it('stops a running exec on abort and keeps the connection usable', async () => {
+    const host = ctx.vault.list('host').find((h) => h.data.label === 'srv')!
+    answer = trustAll
+    const conn = await connectEndpoint(resolveHostById(ctx.vault, host.id, { keepAliveSec: 0 }), connDeps())
+    const abort = new AbortController()
+    const started = Date.now()
+    const running = conn.exec('sleep 30', { timeoutMs: 60_000, signal: abort.signal })
+    setTimeout(() => abort.abort(), 200)
+    await expect(running).rejects.toThrow('Command aborted')
+    expect(Date.now() - started).toBeLessThan(5_000)
+    await expect(conn.exec('echo never', { signal: AbortSignal.abort() })).rejects.toThrow('Command aborted')
+    expect((await conn.exec('echo still-ok')).stdout.trim()).toBe('still-ok')
+    conn.close()
+  })
 })
 
 describe('terminal sessions', () => {

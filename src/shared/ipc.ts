@@ -1,4 +1,4 @@
-import type { AiChatRequest, AiConfigInput, AiConfigSummary, AiTestResult } from './ai'
+import type { AiChatRequest, AiConfigInput, AiConfigSummary, AiTestResult, AiToolStatus } from './ai'
 import type { Item, ItemKind, KindInput, SerialProfileData } from './schemas'
 import type {
   AppInfo,
@@ -197,9 +197,11 @@ export interface Events {
   'fs.changed': { fsId: string; dir: string }
   'update.available': { version: string; url: string }
   'ai.delta': { conversationId: string; text: string }
+  /** Streamed model reasoning; `source` must accompany it in later history. */
+  'ai.reasoning': { conversationId: string; text: string; source: string }
   'ai.toolCall': { conversationId: string; callId: string; name: string; args: Record<string, unknown> }
   'ai.confirm': { confirmId: string; conversationId: string; callId: string; name: string; args: Record<string, unknown> }
-  'ai.toolResult': { conversationId: string; callId: string; name: string; ok: boolean; result: string }
+  'ai.toolResult': { conversationId: string; callId: string; name: string; status: AiToolStatus; result: string }
   'ai.done': { conversationId: string; reason: 'stop' | 'maxTurns' | 'aborted' | 'error'; error?: string }
 }
 

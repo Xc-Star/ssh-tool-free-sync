@@ -1,5 +1,4 @@
-import type { AiChatRequest, AiConfigInput, AiMessage, AiProviderConfig, AiTestResult, AiToolCall } from '@shared/ai'
-import { AI_DECLINED_RESULT } from '@shared/ai'
+import type { AiChatRequest, AiConfigInput, AiMessage, AiProviderConfig, AiTestResult, AiToolCall, AiToolStatus } from '@shared/ai'
 import { clamp, uuidv7 } from '@shared/util'
 import type { Emitter } from '../services/emitter'
 import type { SettingsService } from '../services/settings'
@@ -7,7 +6,7 @@ import type { SessionManager } from '../sessions/session-manager'
 import type { SshConnection } from '../ssh/connect'
 import type { ConnectionPool } from '../ssh/pool'
 import { buildProviderConfig, type AiConfigStore } from './config-store'
-import { createAdapter, type FetchImpl, type ProviderTool } from './providers'
+import { createAdapter, INVALID_ARGS_KEY, reasoningSource, type FetchImpl, type ProviderTool } from './providers'
 
 const TOOLS: ProviderTool[] = [
   {
@@ -47,12 +46,50 @@ const TOOLS: ProviderTool[] = [
 const CONFIRM_TIMEOUT_MS = 5 * 60_000
 const MAX_STDOUT_CHARS = 32 * 1024
 const MAX_STDERR_CHARS = 16 * 1024
+const TOOL_OUTPUT_BUDGET_CHARS = 120_000
+const KEEP_RECENT_TOOL_RESULTS = 3
+
+const DECLINED_RESULT = 'The user DECLINED this action. Do not retry it; explain what you wanted to do and ask how to proceed.'
+const STOPPED_BEFORE_RESULT = 'The user stopped the run before this action was approved; it was not executed.'
+const STOPPED_DURING_RESULT = 'The user stopped the run while this action was running; it may have partially completed.'
+const CLEARED_RESULT = '[Output cleared to save context. Re-run the command if you still need it.]'
 
 export function truncateMiddle(s: string, max: number): string {
   if (s.length <= max) return s
   const head = Math.floor(max * 0.7)
   const tail = max - head
   return `${s.slice(0, head)}\n[... ${s.length - max} characters truncated ...]\n${s.slice(-tail)}`
+}
+
+/** Clears the oldest tool output past the budget (down to half), replayed from full history so earlier prompts stay cache-stable. */
+export function withClearedToolResults(messages: AiMessage[], budget = TOOL_OUTPUT_BUDGET_CHARS, keepRecent = KEEP_RECENT_TOOL_RESULTS): AiMessage[] {
+  const results = messages.flatMap((m, i) => (m.role === 'tool' ? [i] : []))
+  let cut = 0
+  let kept = 0
+  for (let n = 0; n < results.length; n++) {
+    kept += messages[results[n]].content.length
+    if (kept <= budget) continue
+    while (kept > budget / 2 && cut <= n - keepRecent) kept -= messages[results[cut++]].content.length
+  }
+  if (!cut) return messages
+  const cleared = new Set(results.slice(0, cut))
+  return messages.map((m, i) => {
+    if (!cleared.has(i)) return m
+    const content = `${m.content.split('\n', 1)[0].slice(0, 200)}\n${CLEARED_RESULT}`
+    return content.length < m.content.length ? { ...m, content } : m
+  })
+}
+
+function invalidArgs(call: AiToolCall): string | undefined {
+  if (INVALID_ARGS_KEY in call.args) return 'the arguments were not valid JSON (the response was probably cut off); send the call again'
+  if (call.name === 'run_command') return typeof call.args.command === 'string' && call.args.command.trim() ? undefined : '"command" must be a non-empty string'
+  if (call.name === 'send_keys') return typeof call.args.text === 'string' && call.args.text ? undefined : '"text" must be a non-empty string'
+  return `unknown tool "${call.name}"`
+}
+
+interface ToolOutcome {
+  status: AiToolStatus
+  content: string
 }
 
 interface PendingConfirm {
@@ -67,7 +104,7 @@ interface PendingConfirm {
 interface SshSessionLike {
   info: { kind: string; title?: string; osHint?: string; status?: string; hostId?: string }
   connection?: { exec: SshConnection['exec'] }
-  captureWrite?: (text: string, opts?: { quietMs?: number; timeoutMs?: number; maxChars?: number }) => Promise<string>
+  captureWrite?: (text: string, opts?: { quietMs?: number; timeoutMs?: number; maxChars?: number; signal?: AbortSignal }) => Promise<string>
 }
 
 export interface AiServiceDeps {
@@ -159,51 +196,66 @@ export class AiService {
     const { conversationId, sessionId } = req
     const emitter = this.deps.emitter
     const adapter = createAdapter(config.protocol, this.deps.fetchImpl)
-    const messages: AiMessage[] = [{ role: 'system', content: this.systemPrompt(sessionId) }, ...req.messages]
+    const source = reasoningSource(config)
+    const messages: AiMessage[] = [{ role: 'system', content: this.systemPrompt(sessionId, conversationId) }, ...req.messages]
+    let sent: AiMessage[] = []
     try {
       const maxTurns = this.deps.settings.get().ai.maxTurns
       let stopped: 'stop' | 'maxTurns' = 'maxTurns'
       for (let turn = 0; turn < maxTurns; turn++) {
         if (signal.aborted) throw new Error('aborted')
+        // Signed thinking is bound to everything sent before it, so once it appears that prefix is frozen.
+        sent = messages.some((m) => m.role === 'assistant' && m.rawContent)
+          ? [...sent, ...messages.slice(sent.length)]
+          : withClearedToolResults(messages)
         const res = await adapter.chat({
           config,
-          messages,
+          messages: sent,
           tools: TOOLS,
           signal,
-          onDelta: (text) => emitter.emit('ai.delta', { conversationId, text })
+          onDelta: (text) => emitter.emit('ai.delta', { conversationId, text }),
+          onReasoning: (text) => emitter.emit('ai.reasoning', { conversationId, text, source })
         })
-        messages.push(res.toolCalls.length ? { role: 'assistant', content: res.text, toolCalls: res.toolCalls } : { role: 'assistant', content: res.text })
+        messages.push({
+          role: 'assistant',
+          content: res.text,
+          ...(res.toolCalls.length ? { toolCalls: res.toolCalls } : {}),
+          ...(res.reasoning ? { reasoning: { content: res.reasoning, source } } : {}),
+          ...(res.rawContent ? { rawContent: res.rawContent } : {})
+        })
         if (!res.toolCalls.length) {
           stopped = 'stop'
           break
         }
         for (const call of res.toolCalls) {
-          if (signal.aborted) throw new Error('aborted')
           emitter.emit('ai.toolCall', { conversationId, callId: call.id, name: call.name, args: call.args })
-          let ok = true
-          let result = ''
-          try {
-            if (this.needsConfirm(conversationId, call.name)) {
-              const approved = await this.confirmGate(conversationId, call, signal)
-              if (!approved) {
-                ok = false
-                result = AI_DECLINED_RESULT
-              }
-            }
-            if (ok) result = await this.executeTool(sessionId, call)
-          } catch (err) {
-            ok = false
-            result = `Error: ${(err as Error).message}`
-          }
+          const { status, content } = await this.runTool(conversationId, sessionId, call, signal)
+          emitter.emit('ai.toolResult', { conversationId, callId: call.id, name: call.name, status, result: content })
+          messages.push({ role: 'tool', toolCallId: call.id, name: call.name, content })
           if (signal.aborted) throw new Error('aborted')
-          emitter.emit('ai.toolResult', { conversationId, callId: call.id, name: call.name, ok, result })
-          messages.push({ role: 'tool', toolCallId: call.id, name: call.name, content: result })
         }
       }
       emitter.emit('ai.done', { conversationId, reason: stopped })
     } catch (err) {
       if (signal.aborted) emitter.emit('ai.done', { conversationId, reason: 'aborted' })
       else emitter.emit('ai.done', { conversationId, reason: 'error', error: (err as Error).message })
+    }
+  }
+
+  /** Validates, gates and runs one call; always yields a result the model can read. */
+  private async runTool(conversationId: string, sessionId: string, call: AiToolCall, signal: AbortSignal): Promise<ToolOutcome> {
+    const invalid = invalidArgs(call)
+    if (invalid) return { status: 'error', content: `Error: ${invalid}` }
+    if (this.needsConfirm(conversationId, call.name)) {
+      const approved = await this.confirmGate(conversationId, call, signal)
+      if (signal.aborted) return { status: 'aborted', content: STOPPED_BEFORE_RESULT }
+      if (!approved) return { status: 'declined', content: DECLINED_RESULT }
+    }
+    try {
+      const outcome = call.name === 'send_keys' ? await this.sendKeys(sessionId, call.args, signal) : await this.runCommand(sessionId, call.args, signal)
+      return signal.aborted ? { status: 'aborted', content: `${STOPPED_DURING_RESULT}\n${outcome.content}` } : outcome
+    } catch (err) {
+      return signal.aborted ? { status: 'aborted', content: STOPPED_DURING_RESULT } : { status: 'error', content: `Error: ${(err as Error).message}` }
     }
   }
 
@@ -236,28 +288,22 @@ export class AiService {
 
   // ---------------------------------------------------------------- tools
 
-  private async executeTool(sessionId: string, call: AiToolCall): Promise<string> {
-    if (call.name === 'run_command') return await this.runCommand(sessionId, call.args)
-    if (call.name === 'send_keys') return await this.sendKeys(sessionId, call.args)
-    return `Error: unknown tool "${call.name}"`
-  }
-
-  private async runCommand(sessionId: string, args: Record<string, unknown>): Promise<string> {
-    const command = typeof args.command === 'string' ? args.command : ''
-    if (!command.trim()) return 'Error: empty command'
+  private async runCommand(sessionId: string, args: Record<string, unknown>, signal: AbortSignal): Promise<ToolOutcome> {
+    const command = String(args.command)
     const defaultSec = this.deps.settings.get().ai.commandTimeoutSec
     const timeoutSec = clamp(Math.round(Number(args.timeoutSec) || defaultSec), 5, 600)
+    const opts = { timeoutMs: timeoutSec * 1000, maxBytes: 512 * 1024, signal }
 
     const session = this.deps.sessions.get(sessionId) as SshSessionLike | undefined
     const hostId = session?.info.hostId
     const exec = async (): Promise<{ code: number | null; stdout: string; stderr: string }> => {
       if (session?.info.kind === 'ssh' && session.connection) {
-        return await session.connection.exec(command, { timeoutMs: timeoutSec * 1000, maxBytes: 512 * 1024 })
+        return await session.connection.exec(command, opts)
       }
       if (hostId) {
         const lease = await this.deps.pool.acquire(hostId)
         try {
-          return await lease.conn.exec(command, { timeoutMs: timeoutSec * 1000, maxBytes: 512 * 1024 })
+          return await lease.conn.exec(command, opts)
         } finally {
           lease.release()
         }
@@ -265,8 +311,7 @@ export class AiService {
       throw new Error('the terminal session is disconnected and the host has no stored connection')
     }
 
-    // Errors propagate to the loop, which reports them as a failed tool result (ok=false)
-    // while still feeding the message back to the model.
+    // Errors propagate to runTool, which reports them as a failed result the model still reads.
     const res = await exec()
     const stdout = truncateMiddle(res.stdout, MAX_STDOUT_CHARS)
     const stderr = truncateMiddle(res.stderr, MAX_STDERR_CHARS)
@@ -274,39 +319,40 @@ export class AiService {
     if (stdout) parts.push(`--- stdout ---\n${stdout}`)
     if (stderr) parts.push(`--- stderr ---\n${stderr}`)
     if (!stdout && !stderr) parts.push('(no output)')
-    return parts.join('\n')
+    return { status: res.code === 0 ? 'ok' : 'error', content: parts.join('\n') }
   }
 
-  private async sendKeys(sessionId: string, args: Record<string, unknown>): Promise<string> {
-    const text = typeof args.text === 'string' ? args.text : ''
-    if (!text) return 'Error: empty text'
+  private async sendKeys(sessionId: string, args: Record<string, unknown>, signal: AbortSignal): Promise<ToolOutcome> {
+    const text = String(args.text)
     const waitSec = clamp(Math.round(Number(args.waitSec) || 10), 1, 60)
     const session = this.deps.sessions.get(sessionId) as SshSessionLike | undefined
     if (session?.info.kind !== 'ssh' || typeof session.captureWrite !== 'function') {
-      return 'Error: send_keys only works on SSH terminal sessions'
+      return { status: 'error', content: 'Error: send_keys only works on SSH terminal sessions' }
     }
-    const captured = await session.captureWrite(text, { timeoutMs: waitSec * 1000 })
-    if (!captured.trim()) return 'Text typed into the terminal. No output was captured within the wait window.'
-    return `Terminal output after typing:\n${truncateMiddle(captured, MAX_STDERR_CHARS)}`
+    const captured = await session.captureWrite(text, { timeoutMs: waitSec * 1000, signal })
+    if (!captured.trim()) return { status: 'ok', content: 'Text typed into the terminal. No output was captured within the wait window.' }
+    return { status: 'ok', content: `Terminal output after typing:\n${truncateMiddle(captured, MAX_STDERR_CHARS)}` }
   }
 
   // ---------------------------------------------------------------- prompt
 
-  private systemPrompt(sessionId: string): string {
+  private systemPrompt(sessionId: string, conversationId: string): string {
     const s = this.deps.sessions.get(sessionId) as SshSessionLike | undefined
     const label = s?.info.title ?? 'remote host'
     const os = s?.info.osHint ?? 'unknown OS'
     const status = s?.info.status ?? 'unknown'
+    const autoRun = this.deps.settings.get().ai.autoApprove || this.autoConversations.has(conversationId)
     return [
       'You are an AI operations assistant embedded in an SSH terminal application. You complete tasks on the remote server by running commands on the user\'s behalf.',
       `Target: "${label}" (${os}), session status: ${status}.`,
       '',
       'Tool usage rules:',
       '- run_command executes in a non-interactive shell: no persisted cwd/env between calls, no TTY. Chain steps with && or use absolute paths.',
-      '- Command output is truncated from the middle when large; use head/tail/grep/wc for big files.',
-      '- The user approves every command before it runs. A declined command must not be retried; explain and ask instead.',
+      '- run_command results start with the exit code; anything but 0 means the command failed. Output is truncated from the middle when large; use head/tail/grep/wc for big files.',
+      autoRun
+        ? '- Commands run immediately, without the user reviewing them. Before anything destructive or hard to undo (rm -rf, dd, mkfs, shutdown, dropping data), stop and ask the user in plain text first.'
+        : '- The user approves every command before it runs. A declined command must not be retried; explain and ask instead. Before destructive operations (rm -rf, dd, mkfs, shutdown, dropping data), explain the impact first.',
       '- send_keys types into the user\'s visible terminal; reserve it for TTY-only interactions (sudo password prompts, editors, interactive wizards) and always say what you are about to type.',
-      '- Before destructive operations (rm -rf, dd, mkfs, shutdown, dropping data), explain the impact first.',
       '- After each command, briefly interpret the result for the user. Finish with a short summary of what was done once the task is complete.',
       '- Reply in the user\'s language (default to Chinese when they write Chinese).'
     ].join('\n')

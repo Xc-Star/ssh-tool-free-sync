@@ -238,6 +238,7 @@ function MessageRow({ message }: { message: UiMessage }): React.JSX.Element {
   }
   return (
     <div className="mb-3" data-testid="ai-msg-assistant">
+      {message.reasoning?.content ? <ReasoningBlock text={message.reasoning.content} active={!!message.pending && !message.content} /> : null}
       {message.content ? (
         <div className="px-0.5 text-[13px] leading-relaxed text-fg">
           <Markdown
@@ -285,6 +286,21 @@ function MessageRow({ message }: { message: UiMessage }): React.JSX.Element {
   )
 }
 
+function ReasoningBlock({ text, active }: { text: string; active: boolean }): React.JSX.Element {
+  const { t } = useTranslation('ai')
+  return (
+    <details className="mb-1.5" data-testid="ai-reasoning">
+      <summary className="cursor-pointer select-none text-[11px] text-subtle hover:text-muted">
+        {active && <Loader2 className="mr-1 inline size-3 animate-spin align-[-2px]" />}
+        {t('reasoning')}
+      </summary>
+      <div className="mt-1 max-h-48 overflow-auto border-l-2 border-line pl-2.5 text-[11.5px] leading-relaxed whitespace-pre-wrap break-words text-subtle">
+        {text}
+      </div>
+    </details>
+  )
+}
+
 function ContextChip({ context }: { context: string }): React.JSX.Element {
   const { t } = useTranslation('ai')
   return (
@@ -313,6 +329,8 @@ function CommandCard({ call }: { call: UiToolCall }): React.JSX.Element {
       <X className="size-3.5 text-danger" />
     ) : call.status === 'declined' ? (
       <X className="size-3.5 text-subtle" />
+    ) : call.status === 'aborted' ? (
+      <Square className="size-3 text-warning" />
     ) : call.status === 'running' ? (
       <Loader2 className="size-3.5 animate-spin text-accent" />
     ) : null
@@ -368,7 +386,13 @@ function CommandCard({ call }: { call: UiToolCall }): React.JSX.Element {
           <button className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-[11px] text-subtle hover:text-muted" onClick={() => setOpen((v) => !v)}>
             {statusIcon}
             <span className="flex-1">
-              {call.status === 'declined' ? t('statusDeclined') : call.status === 'error' ? t('statusError') : t('statusDone')}
+              {call.status === 'declined'
+                ? t('statusDeclined')
+                : call.status === 'error'
+                  ? t('statusError')
+                  : call.status === 'aborted'
+                    ? t('statusAborted')
+                    : t('statusDone')}
             </span>
             {open ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
           </button>

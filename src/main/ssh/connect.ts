@@ -61,7 +61,10 @@ export class SshConnection {
     this.handleClose()
   }
 
-  exec(command: string, opts: { maxBytes?: number; timeoutMs?: number; stdin?: string } = {}): Promise<{ code: number | null; stdout: string; stderr: string }> {
+  exec(
+    command: string,
+    opts: { maxBytes?: number; timeoutMs?: number; stdin?: string; signal?: AbortSignal } = {}
+  ): Promise<{ code: number | null; stdout: string; stderr: string }> {
     const max = opts.maxBytes ?? 1024 * 1024
     return new Promise((resolve, reject) => {
       this.client.exec(command, (err, stream) => {
@@ -69,10 +72,18 @@ export class SshConnection {
         let stdout = ''
         let stderr = ''
         let code: number | null = null
-        const timer = setTimeout(() => {
+        const stop = (reason: Error): void => {
+          clearTimeout(timer)
+          opts.signal?.removeEventListener('abort', onAbort)
+          // Closing the channel alone can leave the remote process running.
+          stream.signal('INT')
           stream.close()
-          reject(new Error('Command timed out'))
-        }, opts.timeoutMs ?? 20_000)
+          reject(reason)
+        }
+        const onAbort = (): void => stop(new Error('Command aborted'))
+        const timer = setTimeout(() => stop(new Error('Command timed out')), opts.timeoutMs ?? 20_000)
+        if (opts.signal?.aborted) return onAbort()
+        opts.signal?.addEventListener('abort', onAbort, { once: true })
         stream.on('data', (d: Buffer) => {
           if (stdout.length < max) stdout += d.toString('utf8')
         })
@@ -84,6 +95,7 @@ export class SshConnection {
         })
         stream.on('close', () => {
           clearTimeout(timer)
+          opts.signal?.removeEventListener('abort', onAbort)
           resolve({ code, stdout, stderr })
         })
         if (opts.stdin !== undefined) stream.end(opts.stdin)

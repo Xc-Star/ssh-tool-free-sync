@@ -1,10 +1,9 @@
-import type { AiConfigSummary, AiMessage } from '@shared/ai'
-import { AI_DECLINED_RESULT } from '@shared/ai'
+import type { AiConfigSummary, AiMessage, AiReasoning } from '@shared/ai'
 import { uuidv7 } from '@shared/util'
 import { create } from 'zustand'
 import { call, on } from '@/lib/api'
 
-export type ToolStatus = 'running' | 'pending-confirm' | 'done' | 'declined' | 'error'
+export type ToolStatus = 'running' | 'pending-confirm' | 'done' | 'declined' | 'error' | 'aborted'
 
 export interface UiToolCall {
   callId: string
@@ -22,6 +21,8 @@ export interface UiMessage {
   content: string
   /** Optional terminal context attached to a user message (sent but rendered collapsed). */
   context?: string
+  /** Model reasoning; replayed in later history because some providers require it. */
+  reasoning?: AiReasoning
   pending?: boolean
   toolCalls?: UiToolCall[]
 }
@@ -61,7 +62,7 @@ function buildHistory(conv: Conversation): AiMessage[] {
     const calls = (m.toolCalls ?? []).filter((c) => c.result !== undefined)
     const toolCalls = calls.map((c) => ({ id: c.callId, name: c.name, args: c.args }))
     if (m.content || toolCalls.length) {
-      msgs.push(toolCalls.length ? { role: 'assistant', content: m.content, toolCalls } : { role: 'assistant', content: m.content })
+      msgs.push({ role: 'assistant', content: m.content, ...(toolCalls.length ? { toolCalls } : {}), ...(m.reasoning ? { reasoning: m.reasoning } : {}) })
     }
     for (const c of calls) msgs.push({ role: 'tool', toolCallId: c.callId, name: c.name, content: c.result ?? '' })
   }
@@ -101,6 +102,19 @@ function wireEvents(get: () => AiState, set: (fn: (s: AiState) => Partial<AiStat
     })
   )
 
+  on('ai.reasoning', ({ conversationId, text, source }) =>
+    update(conversationId, (conv) => {
+      const msgs = [...conv.messages]
+      const last = msgs[msgs.length - 1]
+      if (last?.role === 'assistant' && last.pending) {
+        msgs[msgs.length - 1] = { ...last, reasoning: { content: (last.reasoning?.content ?? '') + text, source } }
+      } else {
+        msgs.push({ id: uuidv7(), role: 'assistant', content: '', pending: true, reasoning: { content: text, source } })
+      }
+      return { ...conv, messages: msgs }
+    })
+  )
+
   on('ai.toolCall', ({ conversationId, callId, name, args }) =>
     update(conversationId, (conv) => {
       const msgs = [...conv.messages]
@@ -129,7 +143,7 @@ function wireEvents(get: () => AiState, set: (fn: (s: AiState) => Partial<AiStat
     }))
   )
 
-  on('ai.toolResult', ({ conversationId, callId, ok, result }) =>
+  on('ai.toolResult', ({ conversationId, callId, status, result }) =>
     update(conversationId, (conv) => ({
       ...conv,
       messages: conv.messages.map((m) =>
@@ -137,7 +151,7 @@ function wireEvents(get: () => AiState, set: (fn: (s: AiState) => Partial<AiStat
           ? {
               ...m,
               toolCalls: m.toolCalls?.map((c) =>
-                c.callId === callId ? { ...c, status: ok ? 'done' : result === AI_DECLINED_RESULT ? 'declined' : 'error', result, confirmId: undefined } : c
+                c.callId === callId ? { ...c, status: status === 'ok' ? 'done' : status, result, confirmId: undefined } : c
               )
             }
           : m

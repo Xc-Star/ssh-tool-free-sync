@@ -25,6 +25,8 @@ export default {
   statusDone: 'Finished',
   statusDeclined: 'Declined',
   statusError: 'Failed',
+  statusAborted: 'Stopped',
+  reasoning: 'Reasoning',
   copy: 'Copy',
   maxTurns: 'Maximum turns reached. Send "continue" to let the AI carry on.',
   aborted: 'Stopped',

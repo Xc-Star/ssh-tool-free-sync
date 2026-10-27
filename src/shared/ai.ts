@@ -111,18 +111,38 @@ export function normalizeAiBaseUrl(baseUrl: string, protocol: AiProtocol): strin
 
 // ---------------------------------------------------------------- agent messages
 
+/** Model reasoning, replayed only to the endpoint and model that produced it. */
+export interface AiReasoning {
+  content: string
+  /** `${baseUrl}#${model}` of the producing config. */
+  source: string
+}
+
 /** Canonical internal message format (OpenAI-style); Anthropic shape is converted at the provider edge. */
 export type AiMessage =
   | { role: 'system'; content: string }
   | { role: 'user'; content: string }
-  | { role: 'assistant'; content: string; toolCalls?: AiToolCall[] }
+  | {
+      role: 'assistant'
+      content: string
+      toolCalls?: AiToolCall[]
+      /** DeepSeek-style thinking APIs reject tool requests unless every earlier turn's reasoning comes back. */
+      reasoning?: AiReasoning
+      /** Main process, current run only: Anthropic content exactly as returned when it carries signed thinking. */
+      rawContent?: Record<string, unknown>[]
+    }
   | { role: 'tool'; toolCallId: string; name: string; content: string }
 
 export interface AiToolCall {
   id: string
   name: string
   args: Record<string, unknown>
+  /** Main process, current run only: provider data echoed back with the call (Gemini thought signatures). */
+  extra?: Record<string, unknown>
 }
+
+/** How a tool call ended; the UI shows it while the model reads the result text. */
+export type AiToolStatus = 'ok' | 'error' | 'declined' | 'aborted'
 
 export interface AiChatRequest {
   conversationId: string
@@ -130,6 +150,3 @@ export interface AiChatRequest {
   /** Full history including the new user message. */
   messages: AiMessage[]
 }
-
-/** Tool result content used when the user declines a command (shared so renderer + main stay in sync). */
-export const AI_DECLINED_RESULT = 'The user DECLINED this action. Do not retry it; explain what you wanted to do and ask how to proceed.'
