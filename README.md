@@ -137,7 +137,7 @@ D1 是 Cloudflare 的 Serverless SQLite，免费额度对个人同步绰绰有�
 
 ### WebDAV 目录
 
-任何兼容 WebDAV 的存储都可以：Nextcloud、ownCloud、群晖 DiskStation、托管 WebDAV 服务，或开启了 WebDAV 的 Apache / nginx 服务器。不需要数据库，也不需要额外部署任何服务端程序。
+任何兼容 WebDAV 的存储都可以：Nextcloud、ownCloud、群晖 DiskStation、坚果云、托管 WebDAV 服务，或开启了 WebDAV 的 Apache / nginx 服务器。不需要数据库，也不需要额外部署任何服务端程序。
 
 1. 在网盘 / 服务端新建一个目录，例如 `sshtool`（目录不存在时 SSH Tool 也会自动创建）。
 2. 在服务商的「WebDAV」或「通过 WebDAV 连接」页面复制该目录的完整地址，形如
@@ -146,6 +146,10 @@ D1 是 Cloudflare 的 Serverless SQLite，免费额度对个人同步绰绰有�
 
 保险库以单个 JSON 文件（默认 `sshtool_sync.json`）保存在该目录中，所有更新都通过 ETag 条件请求（`If-Match`）做乐观并发控制，
 因此多台设备同时写入不会互相覆盖；对于不返回 ETag 的服务器会自动退化为「写入后校验版本号」的方式。
+
+> 坚果云等部分服务商不允许在 WebDAV 根目录直接存放文件（对 `PUT /dav/<文件>` 返回 404）。
+> 这类情况可以直接粘贴根地址 `https://dav.jianguoyun.com/dav/`，SSH Tool 会自动在其中创建 `ssh-tool` 子目录并把同步文件放进去；
+> 坚果云请使用「账户信息 → 安全选项 → 添加应用密码」生成的应用密码，而不是登录密码。
 
 > 注意：密码泄露时对方同样只能看到密文，但可以删除该文件——请定期在「设置 → 导入与导出 → 加密备份」中导出备份。
 > 建议使用 HTTPS；若服务器证书为自签名，可在系统中信任该证书后再使用。

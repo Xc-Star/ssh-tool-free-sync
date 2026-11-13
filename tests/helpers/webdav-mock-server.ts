@@ -17,6 +17,12 @@ export interface WebdavMockOptions {
   noEtag?: boolean
   /** Reject writes with HTTP 507 (insufficient storage). */
   readOnly?: boolean
+  /**
+   * Refuse files directly inside the collection root, the way Jianguo Cloud (`dav.jianguoyun.com`)
+   * does: `PUT /dav/<file>` answers `404 ObjectNotFound` and files are only accepted inside a
+   * subfolder created with `MKCOL`.
+   */
+  noRootFiles?: boolean
 }
 
 export interface WebdavMock {
@@ -45,6 +51,8 @@ export async function startWebdavMock(opts: WebdavMockOptions = {}): Promise<Web
   const username = opts.username ?? 'alice'
   const password = opts.password ?? 'webdav-secret-0123456789'
   const store = new Map<string, Entry>()
+  /** Sub-collections created with MKCOL, as `<name>/` (only tracked when `noRootFiles` is set). */
+  const dirs = new Set<string>()
   let pending429 = opts.failFirst429 ?? 0
   let requests = 0
 
@@ -77,8 +85,12 @@ export async function startWebdavMock(opts: WebdavMockOptions = {}): Promise<Web
       case 'PROPFIND':
         return propfind(res, name)
       case 'MKCOL':
-        // The collection always exists in this mock.
-        return reply(res, 405, 'collection exists')
+        if (!opts.noRootFiles) {
+          // The collection always exists in this mock.
+          return reply(res, 405, 'collection exists')
+        }
+        dirs.add(`${name.replace(/\/+$/, '')}/`)
+        return reply(res, 201, '')
       case 'GET':
         return get(req, res, name)
       case 'PUT':
@@ -106,7 +118,7 @@ export async function startWebdavMock(opts: WebdavMockOptions = {}): Promise<Web
         { 'Content-Type': 'application/xml; charset=utf-8' }
       )
     }
-    if (!store.has(target)) return reply(res, 404, 'not found')
+    if (!store.has(target) && !dirs.has(`${target}/`)) return reply(res, 404, 'not found')
     return reply(res, 207, '<?xml version="1.0" encoding="utf-8"?><D:multistatus xmlns:D="DAV:"/>', {
       'Content-Type': 'application/xml; charset=utf-8'
     })
@@ -125,6 +137,19 @@ export async function startWebdavMock(opts: WebdavMockOptions = {}): Promise<Web
 
   function put(req: IncomingMessage, res: ServerResponse, name: string, body: string): void {
     if (opts.readOnly) return reply(res, 507, 'insufficient storage')
+    if (opts.noRootFiles) {
+      const parent = name.slice(0, name.lastIndexOf('/') + 1)
+      if (parent === '') {
+        // Jianguo Cloud answers `404 ObjectNotFound` rather than `403` or `409` here.
+        return reply(
+          res,
+          404,
+          '<?xml version="1.0" encoding="UTF-8"?><d:error xmlns:d="DAV:"><d:exception>ObjectNotFound</d:exception></d:error>',
+          { 'Content-Type': 'application/xml; charset=utf-8' }
+        )
+      }
+      if (!dirs.has(parent)) return reply(res, 409, 'conflict')
+    }
     const entry = store.get(name)
     const ifNoneMatch = headerValue(req, 'if-none-match')
     const ifMatch = headerValue(req, 'if-match')

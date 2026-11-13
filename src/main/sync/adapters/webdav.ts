@@ -18,6 +18,12 @@ import { WebdavClient, WebdavConflictError, webdavHostPath } from './webdav-clie
 const CAS_RETRIES = 30
 /** Randomised pause between CAS retries so concurrent devices do not keep colliding. */
 const CAS_BACKOFF_MS = 40
+/**
+ * Subfolder created inside the configured folder when the server refuses files at its root.
+ * Jianguo Cloud (`dav.jianguoyun.com/dav/`) answers `404 ObjectNotFound` for `PUT /dav/<file>`
+ * but happily creates collections, so the sync file has to live one level down.
+ */
+const FALLBACK_DIR = 'ssh-tool'
 
 interface StoredItem {
   hlc: string
@@ -104,6 +110,8 @@ export class WebdavAdapter implements SyncAdapter {
   readonly label: string
   private client: WebdavClient | null = null
   private readonly file: string
+  /** Folder inside the configured collection that holds the file: `''` or `ssh-tool/`. */
+  private dir = ''
   private cache: { state: WebdavState; etag: string | null } | null = null
 
   constructor(
@@ -113,6 +121,11 @@ export class WebdavAdapter implements SyncAdapter {
     const prefix = checkPrefix(config.tablePrefix)
     this.file = `${prefix}sync.json`
     this.label = webdavLabel(config)
+  }
+
+  /** Path of the sync file relative to the configured collection URL. */
+  private get path(): string {
+    return this.dir + this.file
   }
 
   async connect(): Promise<void> {
@@ -125,8 +138,14 @@ export class WebdavAdapter implements SyncAdapter {
       fetchImpl: this.options.fetchImpl
     })
     await client.ensureCollection()
+    this.dir = ''
     // Verifies that the credentials can also read the folder contents, not just PROPFIND it.
-    await client.read(this.file)
+    const direct = await client.read(this.file)
+    if (direct.body === null) {
+      // A vault written by another device on a server that only accepts files inside a subfolder.
+      const nested = await client.read(`${FALLBACK_DIR}/${this.file}`)
+      this.dir = nested.body === null ? '' : `${FALLBACK_DIR}/`
+    }
     this.client = client
   }
 
@@ -248,7 +267,7 @@ export class WebdavAdapter implements SyncAdapter {
   private async load(revalidate = true): Promise<{ state: WebdavState; etag: string | null; exists: boolean }> {
     const client = this.db()
     const ifNoneMatch = revalidate && this.cache?.etag ? this.cache.etag : undefined
-    const res = await client.read(this.file, ifNoneMatch)
+    const res = await client.read(this.path, ifNoneMatch)
     if (res.notModified && this.cache) return { ...this.cache, exists: true }
     if (res.body === null) {
       this.cache = null
@@ -257,6 +276,16 @@ export class WebdavAdapter implements SyncAdapter {
     const state = parseState(res.body)
     this.cache = { state, etag: res.etag }
     return { state, etag: res.etag, exists: true }
+  }
+
+  /**
+   * Switches to the fallback subfolder and creates it. Called when the server rejects a file
+   * `PUT` at the collection root; the caller then re-reads from the new location.
+   */
+  private async useFallbackDir(client: WebdavClient): Promise<void> {
+    await client.ensureSubcollection(FALLBACK_DIR)
+    this.dir = `${FALLBACK_DIR}/`
+    this.cache = null
   }
 
   /** Read-modify-write loop: applies `fn` to a copy of the document and retries on a lost race. */
@@ -276,10 +305,16 @@ export class WebdavAdapter implements SyncAdapter {
       const result = fn(next)
       let etag: string | null
       try {
-        etag = await client.write(this.file, JSON.stringify(next), { etag: snap.etag, exists: snap.exists })
+        etag = await client.write(this.path, JSON.stringify(next), { etag: snap.etag, exists: snap.exists })
       } catch (err) {
         if (err instanceof WebdavConflictError) {
           this.cache = null
+          continue
+        }
+        // The configured folder does not accept new files (e.g. Jianguo Cloud's `/dav/` root).
+        // Move into a subfolder, then redo the whole read-modify-write against it.
+        if (err instanceof SyncAdapterError && err.status === 404 && !this.dir) {
+          await this.useFallbackDir(client)
           continue
         }
         throw err
@@ -289,7 +324,7 @@ export class WebdavAdapter implements SyncAdapter {
         return result
       }
       // The server returned no validator, so confirm our revision actually landed before trusting it.
-      const check = await client.read(this.file)
+      const check = await client.read(this.path)
       if (check.body === null || !matchesRev(check.body, next.rev)) {
         this.cache = null
         continue

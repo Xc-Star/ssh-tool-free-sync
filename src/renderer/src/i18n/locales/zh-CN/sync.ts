@@ -209,7 +209,7 @@ export default {
     webdav1:
       '任何兼容 WebDAV 的存储都可以：Nextcloud、ownCloud、群晖 DiskStation、托管 WebDAV 服务，或开启了 WebDAV 的 Apache / nginx 服务器。',
     webdav2:
-      '为 SSH Tool 创建一个目录，然后把它的 <b>WebDAV URL</b> 粘贴进来——即服务商在“WebDAV”或“通过 WebDAV 连接”处显示的地址。目录不存在时会自动创建。',
+      '为 SSH Tool 创建一个目录，然后把它的 <b>WebDAV URL</b> 粘贴进来——即服务商在“WebDAV”或“通过 WebDAV 连接”处显示的地址。目录不存在时会自动创建。若服务商不允许在根目录直接存放文件（例如坚果云），会自动在其中新建 <code>ssh-tool</code> 子目录。',
     webdav3: '如果服务商支持，请使用应用专用密码而不是账号密码。上传的内容始终只有密文。',
     openWebdavDocs: 'WebDAV 设置指南',
     copy: '复制',

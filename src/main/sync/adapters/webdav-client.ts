@@ -105,10 +105,15 @@ export class WebdavClient {
 
   /** Reads a file. Passing `ifNoneMatch` enables `304 Not Modified` revalidation. */
   async read(path: string, ifNoneMatch?: string): Promise<WebdavReadResult> {
-    const extra: Record<string, string> = ifNoneMatch ? { 'If-None-Match': ifNoneMatch } : {}
+    const extra: Record<string, string> = { 'Cache-Control': 'no-cache' }
+    if (ifNoneMatch) extra['If-None-Match'] = ifNoneMatch
     const res = await this.send('GET', path, { headers: extra })
     if (res.status === 304) return { body: null, etag: ifNoneMatch ?? null, notModified: true }
-    if (res.status === 404 || res.status === 410) return { body: null, etag: null, notModified: false }
+    // 409 means an ancestor collection is missing, which for a file read is "it is not there"
+    // (Jianguo Cloud answers `409 AncestorsNotFound` instead of 404).
+    if (res.status === 404 || res.status === 409 || res.status === 410) {
+      return { body: null, etag: null, notModified: false }
+    }
     if (!res.ok) throw this.toError(res, 'read')
     const body = await res.text()
     return { body, etag: res.headers.get('etag'), notModified: false }
@@ -160,6 +165,18 @@ export class WebdavClient {
     throw this.toError(res, 'collection')
   }
 
+  /**
+   * Creates a sub-collection of the configured folder (idempotent: `405`/`301` mean it is there).
+   * Used when the server refuses to store files directly in the configured folder — Jianguo Cloud
+   * answers `404 ObjectNotFound` for `PUT /dav/<file>` and only accepts files inside a subfolder.
+   */
+  async ensureSubcollection(name: string): Promise<void> {
+    const path = `${name.replace(/\/+$/, '')}/`
+    const res = await this.send('MKCOL', path, { method: 'MKCOL' })
+    if (res.ok || res.status === 405 || res.status === 301) return
+    throw this.toError(res, 'collection')
+  }
+
   private async send(
     method: string,
     path: string,
@@ -191,31 +208,41 @@ export class WebdavClient {
     const status = res.status
     const detail = `HTTP ${status}`
     if (status === 401 || status === 403) {
-      return new SyncAdapterError('auth', `The WebDAV server rejected the credentials (${detail}).`)
+      return new SyncAdapterError('auth', `The WebDAV server rejected the credentials (${detail}).`, undefined, status)
     }
     if (status === 404 || status === 410) {
-      return new SyncAdapterError(
-        'config',
-        `The WebDAV folder was not found (${detail}). Check the URL and that the folder exists.`
-      )
+      const message =
+        action === 'write'
+          ? `The WebDAV server refused to create a file in this folder (${detail}). Some providers only allow files inside a subfolder.`
+          : `The WebDAV folder was not found (${detail}). Check the URL and that the folder exists.`
+      return new SyncAdapterError('config', message, undefined, status)
     }
     if (status === 409) {
-      return new SyncAdapterError('config', `The WebDAV folder could not be created (${detail}).`)
+      return new SyncAdapterError('config', `The WebDAV folder could not be created (${detail}).`, undefined, status)
     }
     if (status === 405 || status === 501) {
       return new SyncAdapterError(
         'config',
-        `The server does not support WebDAV ${action} requests (${detail}). Is this really a WebDAV URL?`
+        `The server does not support WebDAV ${action} requests (${detail}). Is this really a WebDAV URL?`,
+        undefined,
+        status
       )
     }
     if (status === 507 || status === 413) {
-      return new SyncAdapterError('config', `The WebDAV server refused the upload (${detail}: not enough space).`)
+      return new SyncAdapterError(
+        'config',
+        `The WebDAV server refused the upload (${detail}: not enough space).`,
+        undefined,
+        status
+      )
     }
     if (status === 408 || status === 423 || status >= 500) {
-      return new SyncAdapterError('network', `The WebDAV server is unavailable (${detail}).`)
+      return new SyncAdapterError('network', `The WebDAV server is unavailable (${detail}).`, undefined, status)
     }
-    if (status === 429) return new SyncAdapterError('rate-limit', 'The WebDAV server is rate limiting requests.')
-    return new SyncAdapterError('unknown', `The WebDAV ${action} request failed (${detail}).`)
+    if (status === 429) {
+      return new SyncAdapterError('rate-limit', 'The WebDAV server is rate limiting requests.', undefined, status)
+    }
+    return new SyncAdapterError('unknown', `The WebDAV ${action} request failed (${detail}).`, undefined, status)
   }
 
   private redact(message: string): string {

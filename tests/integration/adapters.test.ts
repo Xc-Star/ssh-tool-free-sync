@@ -387,7 +387,8 @@ describe('WebDAV (local mock)', () => {
       const adapter = createAdapter(configFor(limited))
       try {
         await adapter.connect()
-        expect(limited.requests).toBe(4)
+        // PROPFIND (2× 429 + 1× 207), then the probe of the direct file and of the fallback folder.
+        expect(limited.requests).toBe(5)
         await adapter.ensureSchema()
         expect(await adapter.head()).toBe(0)
       } finally {
@@ -443,6 +444,32 @@ describe('WebDAV (local mock)', () => {
       } finally {
         await closeQuietly(adapter)
         await readOnly.close()
+      }
+    })
+  })
+
+  describe('servers that refuse files in the collection root (Jianguo Cloud)', () => {
+    it('falls back to a subfolder and keeps a single file', async () => {
+      const nested = await startWebdavMock({ noRootFiles: true })
+      const prefix = newPrefix()
+      const first = createAdapter(configFor(nested, prefix))
+      const second = createAdapter(configFor(nested, prefix))
+      try {
+        await first.connect()
+        await first.ensureSchema()
+        expect(nested.files()).toEqual([`ssh-tool/${prefix}sync.json`])
+
+        await first.push([{ id: 'a', payload: Buffer.from('one'), hlc: '1', deleted: false, deviceId: 'dev-a' }])
+        expect(await first.head()).toBe(1)
+
+        // A second device finds the vault one level down instead of creating a rival file.
+        await second.connect()
+        expect(await second.head()).toBe(1)
+        expect(nested.files()).toEqual([`ssh-tool/${prefix}sync.json`])
+      } finally {
+        await closeQuietly(first)
+        await closeQuietly(second)
+        await nested.close()
       }
     })
   })

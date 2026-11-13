@@ -131,7 +131,7 @@ D1 is Cloudflare's serverless SQLite. Its free tier is more than enough for pers
 
 ### WebDAV folder
 
-Any WebDAV-compatible storage works: Nextcloud, ownCloud, Synology DiskStation, a managed WebDAV service, or a plain Apache / nginx server with WebDAV enabled. No database and no server-side component to deploy.
+Any WebDAV-compatible storage works: Nextcloud, ownCloud, Synology DiskStation, Jianguo Cloud, a managed WebDAV service, or a plain Apache / nginx server with WebDAV enabled. No database and no server-side component to deploy.
 
 1. Create a folder on your storage, for example `sshtool` (SSH Tool also creates it automatically when it is missing).
 2. Copy the full URL of that folder from your provider's “WebDAV” or “Connect via WebDAV” page, e.g.
@@ -139,6 +139,9 @@ Any WebDAV-compatible storage works: Nextcloud, ownCloud, Synology DiskStation, 
 3. Paste the URL into SSH Tool and enter your user name and password — use an **app password** where your provider offers one.
 
 The vault is stored as a single JSON file (default `sshtool_sync.json`) inside that folder. Every update uses an ETag-conditional request (`If-Match`) for optimistic concurrency control, so devices writing at the same time never clobber each other; servers that do not expose ETags fall back to verifying a revision token after the upload.
+
+> Some providers (Jianguo Cloud among them) do not allow files directly in the WebDAV root and answer `404` for `PUT /dav/<file>`.
+> You can still paste the root address, e.g. `https://dav.jianguoyun.com/dav/`: SSH Tool creates an `ssh-tool` subfolder inside it and keeps the sync file there. On Jianguo Cloud, use an app password generated under **Account info → Security options → Add application password**, not your login password.
 
 > Note: a leaked password still only exposes ciphertext, but it could be used to delete that file — export an encrypted backup regularly under **Settings → Import & export → Encrypted backup**.
 > HTTPS is recommended; if the server uses a self-signed certificate, trust that certificate in your operating system first.

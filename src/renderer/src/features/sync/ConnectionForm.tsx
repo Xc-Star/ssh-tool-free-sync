@@ -201,7 +201,14 @@ export function WebdavHelp({ defaultOpen }: { defaultOpen: boolean }): React.JSX
       <div className="flex flex-col gap-2.5 text-xs leading-relaxed text-muted">
         <p>{t('help.webdav1')}</p>
         <p>
-          <Trans t={t} i18nKey="help.webdav2" components={{ b: strong }} />
+          <Trans
+            t={t}
+            i18nKey="help.webdav2"
+            components={{
+              b: strong,
+              code: <code className="rounded bg-panel px-1 font-mono text-[11px] text-fg" />
+            }}
+          />
         </p>
         <p>{t('help.webdav3')}</p>
       </div>

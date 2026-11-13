@@ -220,7 +220,7 @@ export default {
     webdav1:
       'Any WebDAV-compatible storage works: Nextcloud, ownCloud, Synology DiskStation, a managed WebDAV service, or a plain Apache / nginx server with WebDAV enabled.',
     webdav2:
-      'Create a folder for SSH Tool and paste its <b>WebDAV URL</b> — the address your provider shows under “WebDAV” or “Connect via WebDAV”. The folder is created automatically if it does not exist yet.',
+      'Create a folder for SSH Tool and paste its <b>WebDAV URL</b> — the address your provider shows under “WebDAV” or “Connect via WebDAV”. The folder is created automatically if it does not exist yet. If your provider does not allow files directly in the root (for example Jianguo Cloud), an <code>ssh-tool</code> subfolder is created inside it.',
     webdav3:
       'Use an app password rather than your account password where the service offers one. Only encrypted data is ever uploaded.',
     openWebdavDocs: 'WebDAV setup guide',

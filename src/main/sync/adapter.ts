@@ -61,7 +61,9 @@ export class SyncAdapterError extends Error {
   constructor(
     readonly code: SyncErrorCode,
     message: string,
-    readonly cause?: unknown
+    readonly cause?: unknown,
+    /** HTTP status of the failing response, for HTTP based adapters (WebDAV, D1). */
+    readonly status?: number
   ) {
     super(message)
     this.name = 'SyncAdapterError'
